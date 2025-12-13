@@ -18,6 +18,7 @@ import (
 	"github.com/shhac/grotto/internal/ui/request"
 	"github.com/shhac/grotto/internal/ui/response"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // AppController defines the interface for app-level operations needed by the UI
@@ -71,7 +72,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	// Create real UI components
 	mw.connectionBar = browser.NewConnectionBar(connState)
 	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services)
-	mw.requestPanel = request.NewRequestPanel(mw.state.Request)
+	mw.requestPanel = request.NewRequestPanel(mw.state.Request, mw.logger)
 	mw.responsePanel = response.NewResponsePanel(mw.state.Response)
 	mw.statusBar = uierrors.NewStatusBar(connState)
 
@@ -213,8 +214,33 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 	_ = w.state.SelectedService.Set(service.FullName)
 	_ = w.state.SelectedMethod.Set(method.Name)
 
-	// Update request panel
-	w.requestPanel.SetMethod(method.Name, method.InputType)
+	// Get method descriptor
+	refClient := w.app.ReflectionClient()
+	if refClient == nil {
+		w.logger.Warn("reflection client not initialized")
+		// Update without descriptor (form will show placeholder)
+		w.requestPanel.SetMethod(method.Name, nil)
+		return
+	}
+
+	methodDesc, err := refClient.GetMethodDescriptor(service.FullName, method.Name)
+	if err != nil {
+		w.logger.Error("failed to get method descriptor", slog.Any("error", err))
+		// Update without descriptor (form will show placeholder)
+		w.requestPanel.SetMethod(method.Name, nil)
+		return
+	}
+
+	// Convert to protoreflect descriptor
+	inputType := methodDesc.GetInputType()
+	var protoDesc protoreflect.MessageDescriptor
+	if inputType != nil {
+		// desc.MessageDescriptor implements protoreflect.MessageDescriptor
+		protoDesc = inputType.UnwrapMessage()
+	}
+
+	// Update request panel with method descriptor
+	w.requestPanel.SetMethod(method.Name, protoDesc)
 
 	// Clear previous response
 	_ = w.state.Response.TextData.Set("")

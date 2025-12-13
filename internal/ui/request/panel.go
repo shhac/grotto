@@ -1,12 +1,18 @@
 package request
 
 import (
+	"encoding/json"
+	"log/slog"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/model"
+	"github.com/shhac/grotto/internal/ui/components"
+	"github.com/shhac/grotto/internal/ui/form"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // RequestPanel handles request input
@@ -15,7 +21,20 @@ type RequestPanel struct {
 
 	state        *model.RequestState
 	methodLabel  *widget.Label
+
+	// Text mode
 	textEditor   *widget.Entry           // Multiline JSON editor
+
+	// Form mode
+	formBuilder      *form.FormBuilder       // Form generator
+	formPlaceholder  *widget.Label           // Shown when no method selected
+	formContainer    *fyne.Container         // Container for form or placeholder
+	currentDesc      protoreflect.MessageDescriptor  // Current message descriptor
+
+	// Mode tabs
+	modeTabs     *components.ModeTabs    // Text/Form mode toggle
+
+	// Metadata
 	metadataKeys binding.StringList      // Keys for metadata
 	metadataVals binding.StringList      // Values for metadata
 	metadataList *widget.List            // Key-value metadata entries
@@ -23,15 +42,18 @@ type RequestPanel struct {
 	valEntry     *widget.Entry           // New value entry
 	sendBtn      *widget.Button
 
+	logger       *slog.Logger
+
 	onSend func(json string, metadata map[string]string)
 }
 
 // NewRequestPanel creates a new request panel
-func NewRequestPanel(state *model.RequestState) *RequestPanel {
+func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPanel {
 	p := &RequestPanel{
 		state:        state,
 		metadataKeys: binding.NewStringList(),
 		metadataVals: binding.NewStringList(),
+		logger:       logger,
 	}
 
 	// Method label shows which method is selected
@@ -43,6 +65,31 @@ func NewRequestPanel(state *model.RequestState) *RequestPanel {
 	p.textEditor.SetPlaceHolder(`{"field": "value"}`)
 	p.textEditor.Wrapping = fyne.TextWrapWord
 	p.textEditor.Bind(state.TextData)
+
+	// Form mode placeholder
+	p.formPlaceholder = widget.NewLabel("Select a method to see the form")
+	p.formPlaceholder.Alignment = fyne.TextAlignCenter
+	p.formContainer = container.NewMax(container.NewCenter(p.formPlaceholder))
+
+	// Create mode tabs with text editor and form container
+	p.modeTabs = components.NewModeTabs(
+		container.NewMax(p.textEditor),
+		p.formContainer,
+	)
+
+	// Listen for tab changes and sync to state
+	p.modeTabs.SetOnModeChange(func(mode string) {
+		_ = p.state.Mode.Set(mode)
+		p.syncModeData(mode)
+	})
+
+	// Listen for state.Mode changes (programmatic changes)
+	state.Mode.AddListener(binding.NewDataListener(func() {
+		mode, _ := state.Mode.Get()
+		if p.modeTabs.GetMode() != mode {
+			p.modeTabs.SetMode(mode)
+		}
+	}))
 
 	// Metadata list showing key-value pairs
 	p.metadataList = widget.NewList(
@@ -93,13 +140,77 @@ func (p *RequestPanel) SetOnSend(fn func(json string, metadata map[string]string
 }
 
 // SetMethod updates the panel for a selected method
-func (p *RequestPanel) SetMethod(methodName string, inputType string) {
+func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.MessageDescriptor) {
 	if methodName == "" {
 		p.methodLabel.SetText("No method selected")
+		p.currentDesc = nil
+		p.formBuilder = nil
+		p.formContainer.Objects = []fyne.CanvasObject{container.NewCenter(p.formPlaceholder)}
+		p.formContainer.Refresh()
 	} else {
 		p.methodLabel.SetText("Method: " + methodName)
+		p.currentDesc = inputDesc
+
+		// Build form for this method
+		if inputDesc != nil {
+			p.formBuilder = form.NewFormBuilder(inputDesc)
+			formUI := p.formBuilder.Build()
+			p.formContainer.Objects = []fyne.CanvasObject{formUI}
+			p.formContainer.Refresh()
+
+			// If in form mode, sync existing text to form
+			currentMode, _ := p.state.Mode.Get()
+			if currentMode == "form" {
+				p.syncTextToForm()
+			}
+		}
 	}
 	p.Refresh()
+}
+
+// syncModeData synchronizes data when switching between modes
+func (p *RequestPanel) syncModeData(mode string) {
+	if mode == "form" {
+		// Switching to form mode: parse text JSON and populate form
+		p.syncTextToForm()
+	} else if mode == "text" {
+		// Switching to text mode: convert form to JSON
+		p.syncFormToText()
+	}
+}
+
+// syncTextToForm parses the text editor JSON and populates the form
+func (p *RequestPanel) syncTextToForm() {
+	if p.formBuilder == nil {
+		return
+	}
+
+	textData, _ := p.state.TextData.Get()
+	if textData == "" {
+		return
+	}
+
+	// Try to parse and populate form
+	if err := p.formBuilder.FromJSON(textData); err != nil {
+		p.logger.Warn("failed to populate form from JSON", slog.Any("error", err))
+	}
+}
+
+// syncFormToText converts form values to JSON and updates text editor
+func (p *RequestPanel) syncFormToText() {
+	if p.formBuilder == nil {
+		return
+	}
+
+	// Get JSON from form
+	jsonStr, err := p.formBuilder.ToJSON()
+	if err != nil {
+		p.logger.Warn("failed to convert form to JSON", slog.Any("error", err))
+		return
+	}
+
+	// Update text data binding
+	_ = p.state.TextData.Set(jsonStr)
 }
 
 // addMetadata adds a new metadata header
@@ -128,8 +239,21 @@ func (p *RequestPanel) handleSend() {
 		return
 	}
 
+	// If in form mode, sync form to text first
+	currentMode, _ := p.state.Mode.Get()
+	if currentMode == "form" && p.formBuilder != nil {
+		p.syncFormToText()
+	}
+
 	// Get JSON text from state
 	jsonText, _ := p.state.TextData.Get()
+
+	// Pretty-print JSON
+	var prettyJSON interface{}
+	if err := json.Unmarshal([]byte(jsonText), &prettyJSON); err == nil {
+		prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
+		jsonText = string(prettyBytes)
+	}
 
 	// Build metadata map
 	metadata := make(map[string]string)
@@ -145,12 +269,12 @@ func (p *RequestPanel) handleSend() {
 
 // CreateRenderer returns the widget renderer
 func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
-	// Request body section
-	requestLabel := widget.NewLabel("Request Body (JSON):")
+	// Request body section with mode tabs
+	requestLabel := widget.NewLabel("Request Body:")
 	requestBox := container.NewBorder(
 		requestLabel,
 		nil, nil, nil,
-		container.NewMax(p.textEditor),
+		p.modeTabs,
 	)
 
 	// Metadata section
