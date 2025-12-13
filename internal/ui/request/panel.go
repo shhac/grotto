@@ -30,6 +30,7 @@ type RequestPanel struct {
 	formPlaceholder  *widget.Label           // Shown when no method selected
 	formContainer    *fyne.Container         // Container for form or placeholder
 	currentDesc      protoreflect.MessageDescriptor  // Current message descriptor
+	syncing          bool                    // Flag to prevent sync loops
 
 	// Mode tabs
 	modeTabs     *components.ModeTabs    // Text/Form mode toggle
@@ -206,6 +207,13 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 
 // syncModeData synchronizes data when switching between modes
 func (p *RequestPanel) syncModeData(mode string) {
+	// Prevent sync loops
+	if p.syncing {
+		return
+	}
+	p.syncing = true
+	defer func() { p.syncing = false }()
+
 	if mode == "form" {
 		// Switching to form mode: parse text JSON and populate form
 		p.syncTextToForm()
