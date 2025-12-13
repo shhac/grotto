@@ -34,6 +34,11 @@ type RequestPanel struct {
 	// Mode tabs
 	modeTabs     *components.ModeTabs    // Text/Form mode toggle
 
+	// Streaming mode
+	streamingInput *StreamingInputWidget  // Client streaming input widget
+	isStreaming    bool                   // Whether current method is client streaming
+	mainContainer  *fyne.Container        // Container that switches between normal/streaming
+
 	// Metadata
 	metadataKeys binding.StringList      // Keys for metadata
 	metadataVals binding.StringList      // Values for metadata
@@ -44,7 +49,9 @@ type RequestPanel struct {
 
 	logger       *slog.Logger
 
-	onSend func(json string, metadata map[string]string)
+	onSend       func(json string, metadata map[string]string)
+	onStreamSend func(json string, metadata map[string]string) // Send one message in stream
+	onStreamEnd  func(metadata map[string]string)              // Finish stream and get response
 }
 
 // NewRequestPanel creates a new request panel
@@ -130,13 +137,42 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 		p.handleSend()
 	})
 
+	// Streaming input widget
+	p.streamingInput = NewStreamingInputWidget()
+	p.streamingInput.SetOnSend(func(json string) {
+		p.handleStreamSend(json)
+	})
+	p.streamingInput.SetOnFinish(func() {
+		p.handleStreamFinish()
+	})
+
 	p.ExtendBaseWidget(p)
 	return p
 }
 
-// SetOnSend sets the callback for when Send is clicked
+// SetOnSend sets the callback for when Send is clicked (unary/server streaming)
 func (p *RequestPanel) SetOnSend(fn func(json string, metadata map[string]string)) {
 	p.onSend = fn
+}
+
+// SetOnStreamSend sets the callback for sending a message in client streaming
+func (p *RequestPanel) SetOnStreamSend(fn func(json string, metadata map[string]string)) {
+	p.onStreamSend = fn
+}
+
+// SetOnStreamEnd sets the callback for finishing a client stream
+func (p *RequestPanel) SetOnStreamEnd(fn func(metadata map[string]string)) {
+	p.onStreamEnd = fn
+}
+
+// SetClientStreaming switches the panel to/from client streaming mode
+func (p *RequestPanel) SetClientStreaming(streaming bool) {
+	p.isStreaming = streaming
+	if streaming {
+		// Clear the streaming widget for new stream
+		p.streamingInput.Clear()
+	}
+	p.Refresh()
 }
 
 // SetMethod updates the panel for a selected method
@@ -233,7 +269,7 @@ func (p *RequestPanel) addMetadata() {
 	p.metadataList.Refresh()
 }
 
-// handleSend collects data and invokes the onSend callback
+// handleSend collects data and invokes the onSend callback (unary/server streaming)
 func (p *RequestPanel) handleSend() {
 	if p.onSend == nil {
 		return
@@ -256,6 +292,44 @@ func (p *RequestPanel) handleSend() {
 	}
 
 	// Build metadata map
+	metadata := p.getMetadata()
+
+	p.onSend(jsonText, metadata)
+}
+
+// handleStreamSend sends a single message in a client stream
+func (p *RequestPanel) handleStreamSend(jsonText string) {
+	if p.onStreamSend == nil {
+		return
+	}
+
+	// Pretty-print JSON
+	var prettyJSON interface{}
+	if err := json.Unmarshal([]byte(jsonText), &prettyJSON); err == nil {
+		prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
+		jsonText = string(prettyBytes)
+	}
+
+	// Build metadata map
+	metadata := p.getMetadata()
+
+	p.onStreamSend(jsonText, metadata)
+}
+
+// handleStreamFinish finishes the client stream and requests the response
+func (p *RequestPanel) handleStreamFinish() {
+	if p.onStreamEnd == nil {
+		return
+	}
+
+	// Build metadata map
+	metadata := p.getMetadata()
+
+	p.onStreamEnd(metadata)
+}
+
+// getMetadata builds the metadata map from the UI
+func (p *RequestPanel) getMetadata() map[string]string {
 	metadata := make(map[string]string)
 	length := p.metadataKeys.Length()
 	for i := 0; i < length; i++ {
@@ -263,13 +337,12 @@ func (p *RequestPanel) handleSend() {
 		val, _ := p.metadataVals.GetValue(i)
 		metadata[key] = val
 	}
-
-	p.onSend(jsonText, metadata)
+	return metadata
 }
 
 // CreateRenderer returns the widget renderer
 func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
-	// Request body section with mode tabs
+	// Request body section with mode tabs (for unary/server streaming)
 	requestLabel := widget.NewLabel("Request Body:")
 	requestBox := container.NewBorder(
 		requestLabel,
@@ -299,11 +372,33 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		p.metadataList,
 	)
 
-	// Send button aligned to right
+	// Send button aligned to right (for unary/server streaming)
 	sendBox := container.NewHBox(
 		layout.NewSpacer(),
 		p.sendBtn,
 	)
+
+	// Normal layout (unary/server streaming)
+	normalLayout := container.NewVBox(
+		requestBox,
+		widget.NewSeparator(),
+		metadataBox,
+	)
+
+	// Streaming layout (client streaming)
+	streamingLayout := container.NewVBox(
+		p.streamingInput,
+		widget.NewSeparator(),
+		metadataBox,
+	)
+
+	// Main container that switches between normal and streaming
+	p.mainContainer = container.NewMax()
+	if p.isStreaming {
+		p.mainContainer.Objects = []fyne.CanvasObject{streamingLayout}
+	} else {
+		p.mainContainer.Objects = []fyne.CanvasObject{normalLayout}
+	}
 
 	// Full layout
 	content := container.NewBorder(
@@ -316,12 +411,15 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 			sendBox,
 		),
 		nil, nil,
-		container.NewVBox(
-			requestBox,
-			widget.NewSeparator(),
-			metadataBox,
-		),
+		p.mainContainer,
 	)
+
+	// Update visibility of sendBox based on streaming mode
+	if p.isStreaming {
+		sendBox.Hide()
+	} else {
+		sendBox.Show()
+	}
 
 	return widget.NewSimpleRenderer(content)
 }

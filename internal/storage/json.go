@@ -13,7 +13,9 @@ import (
 const (
 	workspacesDir  = "workspaces"
 	recentFile     = "recent.json"
+	historyFile    = "history.json"
 	maxRecent      = 10
+	maxHistory     = 100
 	filePermission = 0644
 	dirPermission  = 0755
 )
@@ -250,4 +252,105 @@ func (r *JSONRepository) removeDuplicate(recent []domain.Connection, conn domain
 		}
 	}
 	return filtered
+}
+
+// AddHistoryEntry adds a history entry to the history list
+func (r *JSONRepository) AddHistoryEntry(entry domain.HistoryEntry) error {
+	if err := r.ensureBaseDir(); err != nil {
+		return fmt.Errorf("ensure base directory: %w", err)
+	}
+
+	history, err := r.loadHistoryList()
+	if err != nil {
+		return fmt.Errorf("load history: %w", err)
+	}
+
+	// Add to front (most recent first)
+	history = append([]domain.HistoryEntry{entry}, history...)
+
+	// Trim to max size
+	if len(history) > maxHistory {
+		history = history[:maxHistory]
+	}
+
+	if err := r.saveHistoryList(history); err != nil {
+		return fmt.Errorf("save history: %w", err)
+	}
+
+	r.logger.Debug("saved history entry",
+		slog.String("id", entry.ID),
+		slog.String("method", entry.Method))
+
+	return nil
+}
+
+// GetHistory returns the list of history entries, limited by the specified count
+func (r *JSONRepository) GetHistory(limit int) ([]domain.HistoryEntry, error) {
+	history, err := r.loadHistoryList()
+	if err != nil {
+		return nil, fmt.Errorf("load history: %w", err)
+	}
+
+	// Apply limit if specified and valid
+	if limit > 0 && limit < len(history) {
+		history = history[:limit]
+	}
+
+	r.logger.Debug("loaded history", slog.Int("count", len(history)))
+	return history, nil
+}
+
+// ClearHistory removes all history entries
+func (r *JSONRepository) ClearHistory() error {
+	path := r.historyPath()
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			// Already clear, not an error
+			return nil
+		}
+		return fmt.Errorf("delete history file: %w", err)
+	}
+
+	r.logger.Debug("cleared history")
+	return nil
+}
+
+// historyPath returns the path to the history file
+func (r *JSONRepository) historyPath() string {
+	return filepath.Join(r.basePath, historyFile)
+}
+
+// loadHistoryList loads the history list from disk
+func (r *JSONRepository) loadHistoryList() ([]domain.HistoryEntry, error) {
+	path := r.historyPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File doesn't exist yet, return empty list
+			return []domain.HistoryEntry{}, nil
+		}
+		return nil, fmt.Errorf("read history file: %w", err)
+	}
+
+	var history []domain.HistoryEntry
+	if err := json.Unmarshal(data, &history); err != nil {
+		return nil, fmt.Errorf("unmarshal history: %w", err)
+	}
+
+	return history, nil
+}
+
+// saveHistoryList saves the history list to disk
+func (r *JSONRepository) saveHistoryList(history []domain.HistoryEntry) error {
+	data, err := json.MarshalIndent(history, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal history: %w", err)
+	}
+
+	path := r.historyPath()
+	if err := os.WriteFile(path, data, filePermission); err != nil {
+		return fmt.Errorf("write history file: %w", err)
+	}
+
+	return nil
 }

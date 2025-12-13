@@ -11,6 +11,7 @@ import (
 type MemoryRepository struct {
 	workspaces map[string]domain.Workspace
 	recent     []domain.Connection
+	history    []domain.HistoryEntry
 	mu         sync.RWMutex
 }
 
@@ -19,6 +20,7 @@ func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		workspaces: make(map[string]domain.Workspace),
 		recent:     []domain.Connection{},
+		history:    []domain.HistoryEntry{},
 	}
 }
 
@@ -120,4 +122,46 @@ func (m *MemoryRepository) removeDuplicate(recent []domain.Connection, conn doma
 		}
 	}
 	return filtered
+}
+
+// AddHistoryEntry adds a history entry to the history list
+func (m *MemoryRepository) AddHistoryEntry(entry domain.HistoryEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Add to front (most recent first)
+	m.history = append([]domain.HistoryEntry{entry}, m.history...)
+
+	// Trim to max size
+	if len(m.history) > maxHistory {
+		m.history = m.history[:maxHistory]
+	}
+
+	return nil
+}
+
+// GetHistory returns the list of history entries, limited by the specified count
+func (m *MemoryRepository) GetHistory(limit int) ([]domain.HistoryEntry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Return a copy to prevent external modification
+	history := make([]domain.HistoryEntry, len(m.history))
+	copy(history, m.history)
+
+	// Apply limit if specified and valid
+	if limit > 0 && limit < len(history) {
+		history = history[:limit]
+	}
+
+	return history, nil
+}
+
+// ClearHistory removes all history entries
+func (m *MemoryRepository) ClearHistory() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.history = []domain.HistoryEntry{}
+	return nil
 }

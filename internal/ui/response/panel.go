@@ -18,16 +18,28 @@ type ResponsePanel struct {
 	durationLabel *widget.Label
 	loadingBar    *widget.ProgressBarInfinite
 
+	// Response metadata display
+	metadataKeys binding.StringList
+	metadataVals binding.StringList
+	metadataList *widget.List
+
+	// Streaming widget
+	streamingWidget *StreamingMessagesWidget
+	isStreaming     bool
+
 	// Container for switching between content views
 	contentContainer *fyne.Container
 	responseContent  *fyne.Container
+	streamingContent *fyne.Container
 	errorContent     *fyne.Container
 }
 
 // NewResponsePanel creates a new response panel bound to the application state.
 func NewResponsePanel(state *model.ResponseState) *ResponsePanel {
 	p := &ResponsePanel{
-		state: state,
+		state:        state,
+		metadataKeys: binding.NewStringList(),
+		metadataVals: binding.NewStringList(),
 	}
 	p.ExtendBaseWidget(p)
 	p.initializeComponents()
@@ -53,17 +65,60 @@ func (p *ResponsePanel) initializeComponents() {
 	p.errorLabel = widget.NewLabel("")
 	p.errorLabel.Wrapping = fyne.TextWrapWord
 
+	// Response metadata list (read-only)
+	p.metadataList = widget.NewList(
+		func() int {
+			return p.metadataKeys.Length()
+		},
+		func() fyne.CanvasObject {
+			// Template row: key and value labels
+			return container.NewHBox(
+				widget.NewLabel(""),
+				widget.NewLabel(" = "),
+				widget.NewLabel(""),
+			)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			hbox := obj.(*fyne.Container)
+			keyLabel := hbox.Objects[0].(*widget.Label)
+			valLabel := hbox.Objects[2].(*widget.Label)
+
+			// Get key and value from bindings
+			key, _ := p.metadataKeys.GetValue(id)
+			val, _ := p.metadataVals.GetValue(id)
+
+			keyLabel.SetText(key)
+			valLabel.SetText(val)
+		},
+	)
+
+	// Streaming widget
+	p.streamingWidget = NewStreamingMessagesWidget()
+
+	// Metadata section
+	metadataHeader := widget.NewLabel("Response Headers:")
+	metadataHeader.TextStyle = fyne.TextStyle{Bold: true}
+	metadataSection := container.NewBorder(
+		metadataHeader,
+		nil, nil, nil,
+		container.NewMax(p.metadataList),
+	)
+
 	// Create content containers
 	p.responseContent = container.NewBorder(
 		widget.NewLabel("Response:"),
 		container.NewVBox(
 			widget.NewSeparator(),
 			p.durationLabel,
+			widget.NewSeparator(),
+			metadataSection,
 		),
 		nil,
 		nil,
 		p.textDisplay,
 	)
+
+	p.streamingContent = container.NewMax(p.streamingWidget)
 
 	p.errorContent = container.NewBorder(
 		widget.NewLabel("Error:"),
@@ -138,6 +193,49 @@ func (p *ResponsePanel) SetError(message string) {
 // SetLoading shows/hides loading indicator (convenience method).
 func (p *ResponsePanel) SetLoading(loading bool) {
 	_ = p.state.Loading.Set(loading)
+}
+
+// SetStreaming switches between streaming and normal response mode.
+func (p *ResponsePanel) SetStreaming(streaming bool) {
+	p.isStreaming = streaming
+	if streaming {
+		p.showStreaming()
+	} else {
+		p.showResponse()
+	}
+}
+
+// showStreaming displays the streaming widget.
+func (p *ResponsePanel) showStreaming() {
+	p.contentContainer.Objects = []fyne.CanvasObject{p.streamingContent}
+	p.contentContainer.Refresh()
+}
+
+// StreamingWidget returns the streaming widget for external control.
+func (p *ResponsePanel) StreamingWidget() *StreamingMessagesWidget {
+	return p.streamingWidget
+}
+
+// SetResponseMetadata displays response headers received from the server.
+func (p *ResponsePanel) SetResponseMetadata(md map[string]string) {
+	// Clear previous metadata
+	_ = p.metadataKeys.Set([]string{})
+	_ = p.metadataVals.Set([]string{})
+
+	// Add new metadata (convert map to lists)
+	for key, val := range md {
+		_ = p.metadataKeys.Append(key)
+		_ = p.metadataVals.Append(val)
+	}
+
+	p.metadataList.Refresh()
+}
+
+// ClearResponseMetadata clears all response headers.
+func (p *ResponsePanel) ClearResponseMetadata() {
+	_ = p.metadataKeys.Set([]string{})
+	_ = p.metadataVals.Set([]string{})
+	p.metadataList.Refresh()
 }
 
 // CreateRenderer implements fyne.Widget.

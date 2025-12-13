@@ -14,4 +14,9 @@ type Repository interface {
 	SaveRecentConnection(conn domain.Connection) error
 	GetRecentConnections() ([]domain.Connection, error)
 	ClearRecentConnections() error
+
+	// History operations
+	AddHistoryEntry(entry domain.HistoryEntry) error
+	GetHistory(limit int) ([]domain.HistoryEntry, error)
+	ClearHistory() error
 }

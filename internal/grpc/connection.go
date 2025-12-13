@@ -2,7 +2,11 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -77,16 +81,24 @@ func (m *ConnectionManager) Connect(ctx context.Context, cfg domain.Connection) 
 
 	// Configure TLS/credentials
 	var creds credentials.TransportCredentials
-	if cfg.UseTLS {
-		if cfg.Insecure {
-			// TLS with insecure verification (skip cert validation)
-			creds = credentials.NewTLS(nil)
-			m.logger.Warn("using insecure TLS connection (skipping certificate verification)")
-		} else {
-			// Secure TLS with system cert pool
-			creds = credentials.NewTLS(nil)
+	if cfg.UseTLS || cfg.TLS.Enabled {
+		// Build TLS configuration
+		tlsConfig, err := m.buildTLSConfig(cfg.TLS)
+		if err != nil {
+			m.logger.Error("failed to build TLS config",
+				slog.String("address", cfg.Address),
+				slog.Any("error", err),
+			)
+			m.updateState(StateError, "Failed to configure TLS: "+err.Error())
+			return err
 		}
+
+		creds = credentials.NewTLS(tlsConfig)
 		opts = append(opts, grpc.WithTransportCredentials(creds))
+
+		if cfg.TLS.SkipVerify {
+			m.logger.Warn("using insecure TLS connection (skipping certificate verification)")
+		}
 	} else {
 		// No TLS (insecure plaintext)
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -208,4 +220,46 @@ func (m *ConnectionManager) updateState(state ConnectionState, message string) {
 	if callback != nil {
 		callback(state, message)
 	}
+}
+
+// buildTLSConfig creates a TLS configuration from TLSSettings
+func (m *ConnectionManager) buildTLSConfig(settings domain.TLSSettings) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: settings.SkipVerify,
+	}
+
+	// Load CA certificate if provided
+	if settings.CertFile != "" {
+		caCert, err := os.ReadFile(settings.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to append CA certificate")
+		}
+		tlsConfig.RootCAs = caCertPool
+
+		m.logger.Debug("loaded CA certificate", slog.String("file", settings.CertFile))
+	}
+
+	// Load client certificate and key for mTLS if provided
+	if settings.ClientCertFile != "" && settings.ClientKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(settings.ClientCertFile, settings.ClientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+
+		m.logger.Debug("loaded client certificate for mTLS",
+			slog.String("cert", settings.ClientCertFile),
+			slog.String("key", settings.ClientKeyFile),
+		)
+	} else if settings.ClientCertFile != "" || settings.ClientKeyFile != "" {
+		// Only one of cert/key provided - error
+		return nil, fmt.Errorf("both client certificate and key must be provided for mTLS")
+	}
+
+	return tlsConfig, nil
 }
