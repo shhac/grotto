@@ -1,4 +1,4 @@
-package recursive
+package main
 
 import (
 	"context"
@@ -6,29 +6,30 @@ import (
 	"log"
 	"net"
 
+	"github.com/shhac/grotto/testdata/recursive/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
 // server implements the RecursiveService
 type server struct {
-	UnimplementedRecursiveServiceServer
+	pb.UnimplementedRecursiveServiceServer
 }
 
 // EchoTree echoes the tree node back
-func (s *server) EchoTree(ctx context.Context, req *TreeNode) (*TreeNode, error) {
+func (s *server) EchoTree(ctx context.Context, req *pb.TreeNode) (*pb.TreeNode, error) {
 	log.Printf("EchoTree called with value: %d", req.Value)
 	return req, nil
 }
 
 // EchoLinkedList echoes the linked list node back
-func (s *server) EchoLinkedList(ctx context.Context, req *LinkedListNode) (*LinkedListNode, error) {
+func (s *server) EchoLinkedList(ctx context.Context, req *pb.LinkedListNode) (*pb.LinkedListNode, error) {
 	log.Printf("EchoLinkedList called with data: %s", req.Data)
 	return req, nil
 }
 
 // EchoPerson echoes the person back
-func (s *server) EchoPerson(ctx context.Context, req *Person) (*Person, error) {
+func (s *server) EchoPerson(ctx context.Context, req *pb.Person) (*pb.Person, error) {
 	log.Printf("EchoPerson called with name: %s", req.Name)
 	return req, nil
 }
@@ -41,7 +42,7 @@ func StartServer() error {
 	}
 
 	s := grpc.NewServer()
-	RegisterRecursiveServiceServer(s, &server{})
+	pb.RegisterRecursiveServiceServer(s, &server{})
 
 	// Enable reflection for grpcurl and other tools
 	reflection.Register(s)

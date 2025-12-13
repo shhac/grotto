@@ -1,45 +1,38 @@
 # Test Data
 
-This directory contains test servers and data for verifying Grotto functionality.
+This directory contains test gRPC servers for developing and testing Grotto functionality.
 
-## Test gRPC Server
+## Quick Start
 
-Location: `testdata/server/`
+All test servers have gRPC reflection enabled for easy testing with Grotto.
 
-The test server provides a simple gRPC health check service for testing Grotto's connection and reflection capabilities.
+| Server | Port | Description | Run Command |
+|--------|------|-------------|-------------|
+| server | 50051 | Basic greeter with Health service | `cd server && go run main.go` |
+| kitchensink | 50052 | All field types, nested, maps, oneofs | `cd kitchensink && go run main.go` |
+| recursive | 50053 | Self-referencing types (tree, linked list) | `cd recursive && go run main.go` |
+| bidistream | 50054 | Bidirectional streaming echo | `cd bidistream && go run main.go` |
 
-### Running the Test Server
+## Test Servers
 
-```bash
-cd testdata/server
-./server
-```
+### server (port 50051)
+Basic test server with a simple Greeter service and the standard gRPC Health service. Ideal for testing basic connection, reflection, and unary RPC functionality.
 
-The server will:
-- Listen on `localhost:50051`
-- Expose the `grpc.health.v1.Health` service
-- Enable gRPC reflection
+### kitchensink (port 50052)
+Comprehensive test server featuring all protobuf field types, nested messages, maps, repeated fields, and oneofs. Use this to test Grotto's handling of complex message structures and type rendering.
 
-### Using with Grotto
+### recursive (port 50053)
+Tests self-referencing message types including tree structures and linked lists. Validates Grotto's ability to handle recursive type definitions without infinite loops.
 
-1. Start the test server (as shown above)
+### bidistream (port 50054)
+Bidirectional streaming echo server. Tests Grotto's streaming capabilities where both client and server can send multiple messages over a single connection.
+
+## Using with Grotto
+
+1. Start any test server using the run command from the table above
 2. Launch Grotto: `./grotto`
-3. In the connection bar, enter: `localhost:50051`
+3. In the connection bar, enter the server's address (e.g., `localhost:50051`)
 4. Click "Connect"
-5. You should see the health service appear in the service browser
+5. Browse the available services and test requests
 
-### Rebuilding the Server
-
-If you make changes to the server code:
-
-```bash
-cd testdata/server
-go build -o server main.go
-```
-
-### What's Provided
-
-- **grpc.health.v1.Health service**: Standard gRPC health checking service
-- **gRPC reflection**: Allows Grotto to discover services and methods dynamically
-
-This is the minimal setup needed to test Grotto's core functionality without requiring custom proto files.
+Check individual server directories for detailed documentation about specific services and message types.

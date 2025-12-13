@@ -4,7 +4,7 @@
 // 	protoc        v3.20.3
 // source: recursive.proto
 
-package recursive
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

@@ -31,7 +31,7 @@ message PongResponse {
 
 ```bash
 cd testdata/bidistream
-go run server.go
+go run main.go
 ```
 
 The server will start on `localhost:50054`.

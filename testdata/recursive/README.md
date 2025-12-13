@@ -36,7 +36,7 @@ The `recursive.proto` file defines three circular/self-referencing types:
 
 ```bash
 cd testdata/recursive
-go run cmd/server/main.go
+go run main.go
 ```
 
 The server will listen on port 50053 with gRPC reflection enabled.
