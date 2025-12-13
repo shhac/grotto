@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/grpc"
@@ -59,6 +60,7 @@ type MainWindow struct {
 	statusBar      *uierrors.StatusBar
 	workspacePanel *workspace.WorkspacePanel
 	historyPanel   *history.HistoryPanel
+	themeSelector  *widget.Select
 
 	// Streaming state
 	clientStreamHandle *grpc.ClientStreamHandle
@@ -94,12 +96,19 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	mw.statusBar = uierrors.NewStatusBar(connState)
 	mw.workspacePanel = workspace.NewWorkspacePanel(app.Storage(), app.Logger(), window)
 	mw.historyPanel = history.NewHistoryPanel(app.Storage(), app.Logger())
+	mw.themeSelector = CreateThemeSelector(fyneApp)
 
 	// Wire up callbacks
 	mw.wireCallbacks()
 
 	// Set up the window content
 	mw.SetContent()
+
+	// Set up the main menu
+	mw.setupMainMenu()
+
+	// Set up keyboard shortcuts
+	mw.setupKeyboardShortcuts()
 
 	// Set default window size
 	window.Resize(fyne.NewSize(1200, 800))
@@ -175,8 +184,11 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to connect: " + err.Error())
 
-			// Show error dialog
-			dialog.ShowError(fmt.Errorf("connection failed: %w", err), w.window)
+			// Show rich gRPC error dialog with retry option
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - attempt connection again
+				w.handleConnect(address, tlsSettings)
+			})
 			return
 		}
 
@@ -186,7 +198,11 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to initialize reflection: " + err.Error())
 
-			dialog.ShowError(fmt.Errorf("reflection failed: %w", err), w.window)
+			// Show rich gRPC error dialog with retry option
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - attempt connection again
+				w.handleConnect(address, tlsSettings)
+			})
 			return
 		}
 
@@ -197,7 +213,11 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to list services: " + err.Error())
 
-			dialog.ShowError(fmt.Errorf("failed to list services: %w", err), w.window)
+			// Show rich gRPC error dialog with retry option
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - attempt connection again
+				w.handleConnect(address, tlsSettings)
+			})
 			return
 		}
 
@@ -400,6 +420,14 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 
 		if err != nil {
 			w.logger.Error("RPC invocation failed", slog.Any("error", err))
+
+			// Show rich gRPC error dialog with retry option
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - send the request again
+				w.handleSendRequest(jsonStr, metadataMap)
+			})
+
+			// Also set error in response panel for inline visibility
 			_ = w.state.Response.Error.Set(err.Error())
 			w.responsePanel.ClearResponseMetadata()
 			return
@@ -554,25 +582,32 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 func (w *MainWindow) SetContent() {
 	// Left side browser area: connection bar + service browser + workspaces
 	browserWithWorkspace := container.NewVSplit(
-		w.serviceBrowser,  // top (service tree)
-		w.workspacePanel,  // bottom (workspace management)
+		w.serviceBrowser, // top (service tree)
+		w.workspacePanel, // bottom (workspace management)
 	)
 	browserWithWorkspace.SetOffset(0.7) // 70% services, 30% workspaces
 
 	leftPanel := container.NewBorder(
-		w.connectionBar, // top (connection controls)
-		nil,             // bottom
-		nil,             // left
-		nil,             // right
+		w.connectionBar,      // top (connection controls)
+		nil,                  // bottom
+		nil,                  // left
+		nil,                  // right
 		browserWithWorkspace, // center (browser + workspaces)
 	)
 
-	// Right side: vertical split with request, response, and status
+	// Bottom bar: status on left, theme selector on right
+	bottomBar := container.NewBorder(
+		nil, nil, // top, bottom
+		w.statusBar, nil, // left (status), right
+		w.themeSelector, // center (theme selector pushed right)
+	)
+
+	// Right side: vertical split with request, response, and bottom bar
 	rightPanel := container.NewBorder(
-		nil,          // top
-		w.statusBar,  // bottom (status bar)
-		nil,          // left
-		nil,          // right
+		nil,       // top
+		bottomBar, // bottom (status bar + theme selector)
+		nil,       // left
+		nil,       // right
 		container.NewVSplit(
 			w.requestPanel,  // top half
 			w.responsePanel, // bottom half
@@ -581,8 +616,8 @@ func (w *MainWindow) SetContent() {
 
 	// Main layout: horizontal split with browser on left, panels on right
 	mainSplit := container.NewHSplit(
-		leftPanel,   // left side (connection + browser)
-		rightPanel,  // right side (request/response/status)
+		leftPanel,  // left side (connection + browser)
+		rightPanel, // right side (request/response/status)
 	)
 
 	// Set the initial split position (30% for browser, 70% for panels)
@@ -621,7 +656,7 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 		methodDesc, err := refClient.GetMethodDescriptor(serviceName, methodName)
 		if err != nil {
 			w.logger.Error("failed to get method descriptor", slog.Any("error", err))
-			dialog.ShowError(fmt.Errorf("failed to get method descriptor: %w", err), w.window)
+			uierrors.ShowGRPCError(err, w.window, nil)
 			return
 		}
 
@@ -645,7 +680,10 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 		handle, err := invoker.InvokeClientStream(ctx, methodDesc, md)
 		if err != nil {
 			w.logger.Error("failed to start client stream", slog.Any("error", err))
-			dialog.ShowError(fmt.Errorf("failed to start client stream: %w", err), w.window)
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - attempt to start stream again
+				w.handleClientStreamSend(jsonStr, metadataMap)
+			})
 			return
 		}
 
@@ -659,7 +697,10 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 	// Send message on the stream
 	if err := w.clientStreamHandle.Send(jsonStr); err != nil {
 		w.logger.Error("failed to send client stream message", slog.Any("error", err))
-		dialog.ShowError(fmt.Errorf("failed to send message: %w", err), w.window)
+		uierrors.ShowGRPCError(err, w.window, func() {
+			// Retry callback - attempt to send the message again
+			w.handleClientStreamSend(jsonStr, metadataMap)
+		})
 		// Clean up handle on error
 		w.clientStreamHandle = nil
 		return
@@ -709,6 +750,11 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 
 		if err != nil {
 			w.logger.Error("client stream failed", slog.Any("error", err))
+
+			// Show rich gRPC error dialog
+			uierrors.ShowGRPCError(err, w.window, nil)
+
+			// Also set error in response panel for inline visibility
 			_ = w.state.Response.Error.Set(err.Error())
 			return
 		}
@@ -820,9 +866,16 @@ func (w *MainWindow) switchToBidiPanel() {
 		w.serviceBrowser,
 	)
 
+	// Bottom bar: status on left, theme selector on right
+	bottomBar := container.NewBorder(
+		nil, nil, // top, bottom
+		w.statusBar, nil, // left (status), right
+		w.themeSelector, // center (theme selector pushed right)
+	)
+
 	rightPanel := container.NewBorder(
 		nil,
-		w.statusBar,
+		bottomBar,
 		nil, nil,
 		w.bidiPanel,
 	)
@@ -868,7 +921,7 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 		methodDesc, err := refClient.GetMethodDescriptor(serviceName, methodName)
 		if err != nil {
 			w.logger.Error("failed to get method descriptor", slog.Any("error", err))
-			dialog.ShowError(fmt.Errorf("failed to get method descriptor: %w", err), w.window)
+			uierrors.ShowGRPCError(err, w.window, nil)
 			return
 		}
 
@@ -894,7 +947,10 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 		handle, err := invoker.InvokeBidiStream(ctx, methodDesc, md)
 		if err != nil {
 			w.logger.Error("failed to start bidi stream", slog.Any("error", err))
-			dialog.ShowError(fmt.Errorf("failed to start bidi stream: %w", err), w.window)
+			uierrors.ShowGRPCError(err, w.window, func() {
+				// Retry callback - attempt to start stream again
+				w.handleBidiStreamSend(jsonStr, metadataMap)
+			})
 			w.bidiCancelFunc = nil
 			return
 		}
@@ -1035,15 +1091,15 @@ func (w *MainWindow) recordHistoryEntry(address, method, requestJSON string, req
 
 	// Create history entry
 	entry := domain.HistoryEntry{
-		ID:        history.GenerateEntryID(),
-		Timestamp: time.Now(),
+		ID:         history.GenerateEntryID(),
+		Timestamp:  time.Now(),
 		Connection: currentConn,
-		Method:    method,
-		Request:   requestJSON,
-		Response:  responseJSON,
-		Duration:  duration,
-		Status:    status,
-		Error:     errorMsg,
+		Method:     method,
+		Request:    requestJSON,
+		Response:   responseJSON,
+		Duration:   duration,
+		Status:     status,
+		Error:      errorMsg,
 		Metadata: domain.Metadata{
 			Request:  requestMetadata,
 			Response: respMeta,
@@ -1108,4 +1164,92 @@ func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
 	w.serviceBrowser.Refresh()
 
 	w.logger.Info("history entry loaded into request panel - ready to send")
+}
+
+// setupMainMenu creates and sets the application's main menu
+func (w *MainWindow) setupMainMenu() {
+	// File menu - workspace operations
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("Save Workspace", func() {
+			w.workspacePanel.TriggerSave()
+		}),
+		fyne.NewMenuItem("Load Workspace", func() {
+			w.workspacePanel.TriggerLoad()
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Clear History", func() {
+			w.handleClearHistory()
+		}),
+	)
+
+	// Edit menu - clear operations
+	editMenu := fyne.NewMenu("Edit",
+		fyne.NewMenuItem("Clear Request", func() {
+			w.handleClearRequest()
+		}),
+		fyne.NewMenuItem("Clear Response", func() {
+			w.handleClearResponse()
+		}),
+	)
+
+	// View menu - mode switching
+	viewMenu := fyne.NewMenu("View",
+		fyne.NewMenuItem("Text Mode", func() {
+			w.requestPanel.SwitchToTextMode()
+		}),
+		fyne.NewMenuItem("Form Mode", func() {
+			w.requestPanel.SwitchToFormMode()
+		}),
+	)
+
+	// Help menu - about dialog
+	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("About Grotto", func() {
+			ShowAboutDialog(w.window)
+		}),
+	)
+
+	// Create and set the main menu
+	mainMenu := fyne.NewMainMenu(
+		fileMenu,
+		editMenu,
+		viewMenu,
+		helpMenu,
+	)
+
+	w.window.SetMainMenu(mainMenu)
+}
+
+// handleClearHistory shows a confirmation dialog and clears history if confirmed
+func (w *MainWindow) handleClearHistory() {
+	dialog.ShowConfirm("Clear History",
+		"Are you sure you want to clear all request history?",
+		func(confirmed bool) {
+			if confirmed {
+				if err := w.historyPanel.ClearHistory(); err != nil {
+					w.logger.Error("failed to clear history", slog.Any("error", err))
+					dialog.ShowError(fmt.Errorf("failed to clear history: %w", err), w.window)
+				} else {
+					w.logger.Info("history cleared")
+				}
+			}
+		},
+		w.window,
+	)
+}
+
+// handleClearRequest clears the request panel
+func (w *MainWindow) handleClearRequest() {
+	_ = w.state.Request.TextData.Set("")
+	_ = w.state.Request.Metadata.Set([]string{})
+	w.logger.Debug("request panel cleared")
+}
+
+// handleClearResponse clears the response panel
+func (w *MainWindow) handleClearResponse() {
+	_ = w.state.Response.TextData.Set("")
+	_ = w.state.Response.Error.Set("")
+	_ = w.state.Response.Duration.Set("")
+	w.responsePanel.ClearResponseMetadata()
+	w.logger.Debug("response panel cleared")
 }

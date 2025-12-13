@@ -13,12 +13,12 @@ import (
 
 // FormBuilder generates Fyne forms from proto message descriptors
 type FormBuilder struct {
-	md              protoreflect.MessageDescriptor
-	fields          map[string]*FieldWidget      // Scalar field widgets
-	repeatedFields  map[string]*RepeatedFieldWidget
-	nestedFields    map[string]*NestedMessageWidget
-	oneofFields     map[string]*OneofWidget
-	container       *fyne.Container
+	md             protoreflect.MessageDescriptor
+	fields         map[string]*FieldWidget // Scalar field widgets
+	repeatedFields map[string]*RepeatedFieldWidget
+	nestedFields   map[string]*NestedMessageWidget
+	oneofFields    map[string]*OneofWidget
+	container      *fyne.Container
 }
 
 // NewFormBuilder creates a new form builder for a message descriptor
@@ -520,7 +520,6 @@ func getDefaultValue(fd protoreflect.FieldDescriptor) interface{} {
 	}
 	return nil
 }
-
 
 // Validate validates all form fields
 func (b *FormBuilder) Validate() error {

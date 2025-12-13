@@ -42,7 +42,7 @@ func (c *Client) ListServices(ctx context.Context) ([]domain.Service, error) {
 	// Configure for permissive operation (critical for broken servers)
 	refClient.AllowFallbackResolver(
 		protoregistry.GlobalFiles, // Fall back to local well-known types
-		protoregistry.GlobalTypes,  // Extension types
+		protoregistry.GlobalTypes, // Extension types
 	)
 	refClient.AllowMissingFileDescriptors() // Build descriptors even with missing imports
 

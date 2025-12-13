@@ -14,15 +14,15 @@ import (
 // App is the main application coordinator, responsible for wiring
 // together all components and managing their lifecycle.
 type App struct {
-	fyneApp        fyne.App
-	window         fyne.Window
-	config         *Config
-	logger         *slog.Logger
-	connManager    *grpc.ConnectionManager
-	storage        storage.Repository
-	state          *model.ApplicationState
+	fyneApp          fyne.App
+	window           fyne.Window
+	config           *Config
+	logger           *slog.Logger
+	connManager      *grpc.ConnectionManager
+	storage          storage.Repository
+	state            *model.ApplicationState
 	reflectionClient *grpc.ReflectionClient
-	invoker        *grpc.Invoker
+	invoker          *grpc.Invoker
 }
 
 // New creates a new App instance with the given configuration.

@@ -39,3 +39,9 @@ go.work.sum
 
 # macOS
 .DS_Store
+
+# Temporary/verification files
+*.backup
+verify.sh
+VERIFICATION_RESULTS.md
+QUICK_START.md

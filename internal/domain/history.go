@@ -7,13 +7,13 @@ type HistoryEntry struct {
 	ID         string        `json:"id"`
 	Timestamp  time.Time     `json:"timestamp"`
 	Connection Connection    `json:"connection"`
-	Method     string        `json:"method"`      // Full method name (e.g., "mypackage.MyService/MyMethod")
-	Request    string        `json:"request"`     // JSON request body
-	Response   string        `json:"response"`    // JSON response body (for reference)
-	Duration   time.Duration `json:"duration"`    // Request duration
-	Status     string        `json:"status"`      // "success" or "error"
-	Error      string        `json:"error"`       // Error message if failed
-	Metadata   Metadata      `json:"metadata"`    // Request metadata/headers
+	Method     string        `json:"method"`   // Full method name (e.g., "mypackage.MyService/MyMethod")
+	Request    string        `json:"request"`  // JSON request body
+	Response   string        `json:"response"` // JSON response body (for reference)
+	Duration   time.Duration `json:"duration"` // Request duration
+	Status     string        `json:"status"`   // "success" or "error"
+	Error      string        `json:"error"`    // Error message if failed
+	Metadata   Metadata      `json:"metadata"` // Request metadata/headers
 }
 
 // Metadata represents request/response metadata

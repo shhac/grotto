@@ -72,9 +72,9 @@ func (p *HistoryPanel) buildUI() {
 			replayButton := widget.NewButton("Replay", nil)
 
 			return container.NewBorder(
-				nil, // top
-				nil, // bottom
-				nil, // left
+				nil,          // top
+				nil,          // bottom
+				nil,          // left
 				replayButton, // right
 				container.NewVBox(
 					container.NewHBox(timeLabel, statusLabel, durationLabel),
@@ -131,20 +131,20 @@ func (p *HistoryPanel) buildUI() {
 
 	// Header with status and clear button
 	header := container.NewBorder(
-		nil,            // top
-		nil,            // bottom
-		p.statusLabel,  // left
-		p.clearButton,  // right
-		nil,            // center
+		nil,           // top
+		nil,           // bottom
+		p.statusLabel, // left
+		p.clearButton, // right
+		nil,           // center
 	)
 
 	// Build content
 	p.content = container.NewBorder(
-		header,        // top
-		nil,           // bottom
-		nil,           // left
-		nil,           // right
-		p.listWidget,  // center
+		header,       // top
+		nil,          // bottom
+		nil,          // left
+		nil,          // right
+		p.listWidget, // center
 	)
 }
 
@@ -229,4 +229,13 @@ func (p *HistoryPanel) AddEntry(entry domain.HistoryEntry) error {
 // GenerateEntryID generates a unique ID for a history entry
 func GenerateEntryID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// ClearHistory clears all history entries
+func (p *HistoryPanel) ClearHistory() error {
+	if err := p.storage.ClearHistory(); err != nil {
+		return err
+	}
+	p.Refresh()
+	return nil
 }

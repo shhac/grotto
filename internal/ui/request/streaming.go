@@ -13,15 +13,15 @@ import (
 type StreamingInputWidget struct {
 	widget.BaseWidget
 
-	messageEntry *widget.Entry       // Current message to send (multiline JSON editor)
-	sentList     *widget.List        // List of sent messages
-	sentMessages binding.StringList  // Binding for sent messages
+	messageEntry *widget.Entry      // Current message to send (multiline JSON editor)
+	sentList     *widget.List       // List of sent messages
+	sentMessages binding.StringList // Binding for sent messages
 
 	sendBtn   *widget.Button // Send current message
 	finishBtn *widget.Button // Close stream and get response
 
 	onSend   func(json string) // Callback when Send is clicked
-	onFinish func()             // Callback when Finish is clicked
+	onFinish func()            // Callback when Finish is clicked
 }
 
 // NewStreamingInputWidget creates a new streaming input widget.

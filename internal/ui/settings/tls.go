@@ -14,14 +14,14 @@ type TLSConfig struct {
 	widget.BaseWidget
 
 	// TLS settings
-	enableTLS   *widget.Check
-	skipVerify  *widget.Check
-	certFile    *widget.Entry
-	certFileBtn *widget.Button
-	clientCert  *widget.Entry
+	enableTLS     *widget.Check
+	skipVerify    *widget.Check
+	certFile      *widget.Entry
+	certFileBtn   *widget.Button
+	clientCert    *widget.Entry
 	clientCertBtn *widget.Button
-	clientKey   *widget.Entry
-	clientKeyBtn *widget.Button
+	clientKey     *widget.Entry
+	clientKeyBtn  *widget.Button
 
 	// UI container
 	container *fyne.Container

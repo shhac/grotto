@@ -102,11 +102,11 @@ func (p *WorkspacePanel) CreateRenderer() fyne.WidgetRenderer {
 
 	// Main layout
 	content := container.NewBorder(
-		title,                                  // top
+		title, // top
 		container.NewVBox(p.nameEntry, buttonRow, actionRow), // bottom
-		nil,                                    // left
-		nil,                                    // right
-		container.NewScroll(p.listWidget),      // center
+		nil,                               // left
+		nil,                               // right
+		container.NewScroll(p.listWidget), // center
 	)
 
 	return widget.NewSimpleRenderer(content)
@@ -133,6 +133,16 @@ func (p *WorkspacePanel) SetOnLoad(fn func(workspace domain.Workspace)) {
 // SetOnSave sets callback to get current state for saving
 func (p *WorkspacePanel) SetOnSave(fn func() domain.Workspace) {
 	p.onSave = fn
+}
+
+// TriggerSave programmatically triggers save (for keyboard shortcut)
+func (p *WorkspacePanel) TriggerSave() {
+	p.handleSave()
+}
+
+// TriggerLoad programmatically triggers load (for keyboard shortcut)
+func (p *WorkspacePanel) TriggerLoad() {
+	p.handleLoad()
 }
 
 // handleSave saves the current workspace

@@ -44,6 +44,9 @@ func runApp() (err error) {
 	// Create Fyne application
 	fyneApp := app.NewWithID("com.grotto.client")
 
+	// Load theme preference
+	ui.LoadThemePreference(fyneApp)
+
 	// Create and wire the application
 	grottoApp, err := grottoApp.New(fyneApp, cfg)
 	if err != nil {

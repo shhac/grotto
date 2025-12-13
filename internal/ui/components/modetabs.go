@@ -11,9 +11,9 @@ import (
 type ModeTabs struct {
 	widget.BaseWidget
 
-	tabs        *container.AppTabs
-	textTab     *container.TabItem
-	formTab     *container.TabItem
+	tabs    *container.AppTabs
+	textTab *container.TabItem
+	formTab *container.TabItem
 
 	textContent fyne.CanvasObject
 	formContent fyne.CanvasObject

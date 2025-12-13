@@ -123,7 +123,7 @@ func (i *Invoker) InvokeServerStream(
 	jsonRequest string,
 	md metadata.MD,
 ) (<-chan string, <-chan error) {
-	msgChan := make(chan string, 10)  // Buffered to avoid blocking on send
+	msgChan := make(chan string, 10) // Buffered to avoid blocking on send
 	errChan := make(chan error, 1)
 
 	methodName := methodDesc.GetFullyQualifiedName()
@@ -313,15 +313,16 @@ func (h *ClientStreamHandle) CloseAndReceive() (string, error) {
 //   - err: Error if stream creation fails
 //
 // Usage:
-//   handle, err := invoker.InvokeClientStream(ctx, methodDesc, md)
-//   if err != nil { ... }
 //
-//   // Send multiple messages
-//   handle.Send(`{"id": "1"}`)
-//   handle.Send(`{"id": "2"}`)
+//	handle, err := invoker.InvokeClientStream(ctx, methodDesc, md)
+//	if err != nil { ... }
 //
-//   // Close stream and get response
-//   response, err := handle.CloseAndReceive()
+//	// Send multiple messages
+//	handle.Send(`{"id": "1"}`)
+//	handle.Send(`{"id": "2"}`)
+//
+//	// Close stream and get response
+//	response, err := handle.CloseAndReceive()
 func (i *Invoker) InvokeClientStream(
 	ctx context.Context,
 	methodDesc *desc.MethodDescriptor,
@@ -474,25 +475,26 @@ func (h *BidiStreamHandle) CloseSend() error {
 //   - err: Error if stream creation fails
 //
 // Usage:
-//   handle, err := invoker.InvokeBidiStream(ctx, methodDesc, md)
-//   if err != nil { ... }
 //
-//   // Start a goroutine to receive messages
-//   go func() {
-//       for {
-//           msg, err := handle.Recv()
-//           if err == io.EOF { return }
-//           if err != nil { ... }
-//           // Process msg
-//       }
-//   }()
+//	handle, err := invoker.InvokeBidiStream(ctx, methodDesc, md)
+//	if err != nil { ... }
 //
-//   // Send multiple messages
-//   handle.Send(`{"id": "1"}`)
-//   handle.Send(`{"id": "2"}`)
+//	// Start a goroutine to receive messages
+//	go func() {
+//	    for {
+//	        msg, err := handle.Recv()
+//	        if err == io.EOF { return }
+//	        if err != nil { ... }
+//	        // Process msg
+//	    }
+//	}()
 //
-//   // Close send side when done
-//   handle.CloseSend()
+//	// Send multiple messages
+//	handle.Send(`{"id": "1"}`)
+//	handle.Send(`{"id": "2"}`)
+//
+//	// Close send side when done
+//	handle.CloseSend()
 func (i *Invoker) InvokeBidiStream(
 	ctx context.Context,
 	methodDesc *desc.MethodDescriptor,
@@ -528,4 +530,3 @@ func (i *Invoker) InvokeBidiStream(
 		logger:     i.logger,
 	}, nil
 }
-

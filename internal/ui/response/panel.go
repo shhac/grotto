@@ -231,6 +231,19 @@ func (p *ResponsePanel) SetResponseMetadata(md map[string]string) {
 	p.metadataList.Refresh()
 }
 
+// ClearResponse clears all response data (for keyboard shortcut)
+func (p *ResponsePanel) ClearResponse() {
+	_ = p.state.TextData.Set("")
+	_ = p.state.Error.Set("")
+	_ = p.state.Duration.Set("")
+	p.ClearResponseMetadata()
+
+	// If in streaming mode, also clear streaming widget
+	if p.isStreaming {
+		p.streamingWidget.Clear()
+	}
+}
+
 // ClearResponseMetadata clears all response headers.
 func (p *ResponsePanel) ClearResponseMetadata() {
 	_ = p.metadataKeys.Set([]string{})

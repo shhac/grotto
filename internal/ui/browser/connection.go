@@ -153,8 +153,12 @@ func (c *ConnectionBar) SetTLSSettings(settings domain.TLSSettings) {
 	c.tlsSettings = settings
 }
 
+// FocusAddress focuses the address entry field (for keyboard shortcut)
+func (c *ConnectionBar) FocusAddress() {
+	c.window.Canvas().Focus(c.addressEntry)
+}
+
 // SetAddress sets the address in the entry field
 func (c *ConnectionBar) SetAddress(address string) {
 	c.addressEntry.SetText(address)
 }
-

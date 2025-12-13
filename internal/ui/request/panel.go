@@ -19,36 +19,36 @@ import (
 type RequestPanel struct {
 	widget.BaseWidget
 
-	state        *model.RequestState
-	methodLabel  *widget.Label
+	state       *model.RequestState
+	methodLabel *widget.Label
 
 	// Text mode
-	textEditor   *widget.Entry           // Multiline JSON editor
+	textEditor *widget.Entry // Multiline JSON editor
 
 	// Form mode
-	formBuilder      *form.FormBuilder       // Form generator
-	formPlaceholder  *widget.Label           // Shown when no method selected
-	formContainer    *fyne.Container         // Container for form or placeholder
-	currentDesc      protoreflect.MessageDescriptor  // Current message descriptor
-	syncing          bool                    // Flag to prevent sync loops
+	formBuilder     *form.FormBuilder              // Form generator
+	formPlaceholder *widget.Label                  // Shown when no method selected
+	formContainer   *fyne.Container                // Container for form or placeholder
+	currentDesc     protoreflect.MessageDescriptor // Current message descriptor
+	syncing         bool                           // Flag to prevent sync loops
 
 	// Mode tabs
-	modeTabs     *components.ModeTabs    // Text/Form mode toggle
+	modeTabs *components.ModeTabs // Text/Form mode toggle
 
 	// Streaming mode
-	streamingInput *StreamingInputWidget  // Client streaming input widget
-	isStreaming    bool                   // Whether current method is client streaming
-	mainContainer  *fyne.Container        // Container that switches between normal/streaming
+	streamingInput *StreamingInputWidget // Client streaming input widget
+	isStreaming    bool                  // Whether current method is client streaming
+	mainContainer  *fyne.Container       // Container that switches between normal/streaming
 
 	// Metadata
-	metadataKeys binding.StringList      // Keys for metadata
-	metadataVals binding.StringList      // Values for metadata
-	metadataList *widget.List            // Key-value metadata entries
-	keyEntry     *widget.Entry           // New key entry
-	valEntry     *widget.Entry           // New value entry
+	metadataKeys binding.StringList // Keys for metadata
+	metadataVals binding.StringList // Values for metadata
+	metadataList *widget.List       // Key-value metadata entries
+	keyEntry     *widget.Entry      // New key entry
+	valEntry     *widget.Entry      // New value entry
 	sendBtn      *widget.Button
 
-	logger       *slog.Logger
+	logger *slog.Logger
 
 	onSend       func(json string, metadata map[string]string)
 	onStreamSend func(json string, metadata map[string]string) // Send one message in stream
@@ -346,6 +346,21 @@ func (p *RequestPanel) getMetadata() map[string]string {
 		metadata[key] = val
 	}
 	return metadata
+}
+
+// TriggerSend programmatically triggers the send action (for keyboard shortcut)
+func (p *RequestPanel) TriggerSend() {
+	p.handleSend()
+}
+
+// SwitchToTextMode switches to text mode (for keyboard shortcut)
+func (p *RequestPanel) SwitchToTextMode() {
+	p.modeTabs.SetMode("text")
+}
+
+// SwitchToFormMode switches to form mode (for keyboard shortcut)
+func (p *RequestPanel) SwitchToFormMode() {
+	p.modeTabs.SetMode("form")
 }
 
 // CreateRenderer returns the widget renderer

@@ -17,15 +17,15 @@ type BidiStreamPanel struct {
 	widget.BaseWidget
 
 	// Send side (left)
-	messageEntry *widget.Entry       // Current message to send
-	sentList     *widget.List        // List of sent messages
-	sentMessages binding.StringList  // Binding for sent messages
+	messageEntry *widget.Entry      // Current message to send
+	sentList     *widget.List       // List of sent messages
+	sentMessages binding.StringList // Binding for sent messages
 
 	sendBtn      *widget.Button // Send current message
 	closeSendBtn *widget.Button // Close send stream
 
 	// Receive side (right)
-	receivedList     *widget.List       // List of received messages
+	receivedList     *widget.List        // List of received messages
 	receivedMessages binding.UntypedList // Binding for received messages
 
 	// Status
@@ -36,7 +36,7 @@ type BidiStreamPanel struct {
 
 	// Callbacks
 	onSend      func(json string) // Callback when Send is clicked
-	onCloseSend func()             // Callback when Close Send is clicked
+	onCloseSend func()            // Callback when Close Send is clicked
 }
 
 // NewBidiStreamPanel creates a new bidirectional streaming panel.
