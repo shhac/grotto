@@ -93,6 +93,10 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 
 	// Listen for state.Mode changes (programmatic changes)
 	state.Mode.AddListener(binding.NewDataListener(func() {
+		// Prevent sync loops
+		if p.syncing {
+			return
+		}
 		mode, _ := state.Mode.Get()
 		if p.modeTabs.GetMode() != mode {
 			p.modeTabs.SetMode(mode)

@@ -67,10 +67,10 @@ func NewConnectionManager(logger *slog.Logger) *ConnectionManager {
 func (m *ConnectionManager) Connect(ctx context.Context, cfg domain.Connection) error {
 	m.updateState(StateConnecting, "Connecting to "+cfg.Address)
 
-	// Configure keepalive parameters for GUI applications
+	// Configure keepalive parameters to avoid ENHANCE_YOUR_CALM errors
 	kaParams := keepalive.ClientParameters{
-		Time:                10 * time.Second, // Ping every 10s
-		Timeout:             3 * time.Second,  // Wait 3s for ping ack
+		Time:                30 * time.Second, // Ping every 30s (reduced frequency)
+		Timeout:             20 * time.Second, // Wait 20s for ping ack
 		PermitWithoutStream: true,             // Keep alive even when idle
 	}
 

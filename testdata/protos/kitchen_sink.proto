@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package kitchensink;
+
+option go_package = "github.com/shhac/grotto/testdata/kitchensink/pb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// Priority levels for task management
+enum Priority {
+  PRIORITY_UNSPECIFIED = 0;
+  LOW = 1;
+  MEDIUM = 2;
+  HIGH = 3;
+  CRITICAL = 4;
+}
+
+// Status of a task
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  IN_PROGRESS = 2;
+  COMPLETED = 3;
+  CANCELLED = 4;
+}
+
+// Nested message with all scalar types
+message ScalarTypes {
+  int32 int32_field = 1;
+  int64 int64_field = 2;
+  uint32 uint32_field = 3;
+  uint64 uint64_field = 4;
+  sint32 sint32_field = 5;
+  sint64 sint64_field = 6;
+  fixed32 fixed32_field = 7;
+  fixed64 fixed64_field = 8;
+  sfixed32 sfixed32_field = 9;
+  sfixed64 sfixed64_field = 10;
+  float float_field = 11;
+  double double_field = 12;
+  bool bool_field = 13;
+  string string_field = 14;
+  bytes bytes_field = 15;
+}
+
+// Optional variants of scalar types
+message OptionalScalars {
+  optional int32 int32_field = 1;
+  optional int64 int64_field = 2;
+  optional float float_field = 3;
+  optional double double_field = 4;
+  optional bool bool_field = 5;
+  optional string string_field = 6;
+  optional bytes bytes_field = 7;
+}
+
+// Address information
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string zip_code = 4;
+  string country = 5;
+  optional string apartment = 6;
+}
+
+// Contact information
+message Contact {
+  string name = 1;
+  string email = 2;
+  optional string phone = 3;
+  Address address = 4;
+}
+
+// Task with nested structures
+message Task {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  Priority priority = 4;
+  Status status = 5;
+  Contact assignee = 6;
+  repeated string tags = 7;
+  repeated Contact watchers = 8;
+  map<string, string> metadata = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp due_date = 11;
+  google.protobuf.Duration estimated_duration = 12;
+  ScalarTypes scalar_examples = 13;
+  OptionalScalars optional_examples = 14;
+}
+
+// Request to create or update a task
+message TaskRequest {
+  Task task = 1;
+  bool validate_only = 2;
+  repeated string field_mask = 3;
+}
+
+// Response with the task
+message TaskResponse {
+  Task task = 1;
+  string message = 2;
+  bool success = 3;
+}
+
+// List tasks request
+message ListTasksRequest {
+  optional Priority priority_filter = 1;
+  optional Status status_filter = 2;
+  optional string assignee_email = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+// List tasks response
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Kitchen sink service for comprehensive testing
+service KitchenSink {
+  // Create or update a task
+  rpc UpsertTask(TaskRequest) returns (TaskResponse);
+
+  // Get a task by ID
+  rpc GetTask(TaskRequest) returns (TaskResponse);
+
+  // List tasks with filtering
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+}

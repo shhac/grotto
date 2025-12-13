@@ -24,11 +24,14 @@ go.work.sum
 # Grotto binary
 /grotto
 
-# Test server binary
+# Test server binaries
 /testdata/server/server
 /testdata/server/go.mod
 /testdata/server/go.sum
 /testdata/server/*.log
+/testdata/kitchensink/kitchen-sink-server
+/testdata/kitchensink/kitchensink
+/testdata/recursive/server
 
 # IDE and editor files
 .vscode/

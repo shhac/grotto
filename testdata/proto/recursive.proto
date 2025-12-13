@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package testdata.recursive;
+
+option go_package = "github.com/shhac/grotto/testdata/recursive;recursive";
+
+// RecursiveService demonstrates circular/self-referencing message types
+service RecursiveService {
+  // Echo a tree node back
+  rpc EchoTree(TreeNode) returns (TreeNode);
+
+  // Echo a linked list node back
+  rpc EchoLinkedList(LinkedListNode) returns (LinkedListNode);
+
+  // Echo a person with friends back
+  rpc EchoPerson(Person) returns (Person);
+}
+
+// TreeNode demonstrates direct self-reference with optional fields
+message TreeNode {
+  int32 value = 1;
+  optional TreeNode left = 2;
+  optional TreeNode right = 3;
+}
+
+// LinkedListNode demonstrates simple linear self-reference
+message LinkedListNode {
+  string data = 1;
+  optional LinkedListNode next = 2;
+}
+
+// Person demonstrates indirect circular reference through repeated fields
+message Person {
+  string name = 1;
+  int32 age = 2;
+  repeated Person friends = 3;
+}
