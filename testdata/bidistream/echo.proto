@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package echo;
+
+option go_package = "github.com/shhac/grotto/testdata/bidistream/pb";
+
+message PingRequest {
+  string ping = 1;
+}
+
+message PongResponse {
+  string pong = 1;
+}
+
+service EchoService {
+  rpc BidiEcho(stream PingRequest) returns (stream PongResponse);
+}

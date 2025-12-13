@@ -40,15 +40,18 @@ func NewOneofWidget(name string, od protoreflect.OneofDescriptor) *OneofWidget {
 		}
 	}
 
-	// Create selector
-	w.selector = widget.NewSelect(fieldNames, func(selected string) {
-		w.onFieldSelected(selected)
-	})
+	// Create selector without callback initially
+	w.selector = widget.NewSelect(fieldNames, nil)
 
 	// Set initial selection if available
 	if len(fieldNames) > 0 {
 		w.selector.SetSelected(fieldNames[0])
 		w.activeField = fieldNames[0]
+	}
+
+	// Set callback after initial selection to avoid triggering during setup
+	w.selector.OnChanged = func(selected string) {
+		w.onFieldSelected(selected)
 	}
 
 	// Container for the active field widget
