@@ -76,25 +76,135 @@ A permissive, user-friendly gRPC client in Go.
 go get fyne.io/fyne/v2@latest
 ```
 
-### Key Fyne Concepts
+### Architecture: Modified MVC with Data Binding
+
+Fyne doesn't enforce an architecture, but for Grotto's complexity use centralized state with data binding:
+
+**Model (Centralized State)**
+```go
+// internal/model/state.go
+type ApplicationState struct {
+    // Connection
+    currentServer   binding.String
+    connected       binding.Bool
+
+    // Selection
+    selectedService binding.String
+    selectedMethod  binding.String
+
+    // Request/Response
+    request         *RequestState
+    response        *ResponseState
+}
+
+type RequestState struct {
+    mode      binding.String  // "text" or "form"
+    textData  binding.String  // JSON
+    errors    binding.StringList
+    dirty     binding.Bool
+}
+
+type ResponseState struct {
+    mode      binding.String
+    textData  binding.String
+    loading   binding.Bool
+    streaming binding.Bool
+    messages  binding.UntypedList  // For streaming responses
+}
+```
+
+**View (Thin UI Layer)**
+```go
+// internal/ui/request/panel.go
+type RequestPanel struct {
+    widget.BaseWidget
+
+    state      *model.RequestState
+    textEditor *widget.Entry
+}
+
+func NewRequestPanel(state *model.RequestState) *RequestPanel {
+    p := &RequestPanel{state: state}
+    p.ExtendBaseWidget(p)
+
+    // Bind UI to state - automatic updates
+    p.textEditor = widget.NewEntryWithData(state.textData)
+
+    // Listen to mode changes
+    state.mode.AddListener(binding.NewDataListener(func() {
+        mode, _ := state.mode.Get()
+        p.switchMode(mode)
+    }))
+
+    return p
+}
+```
+
+### Threading Model (Critical)
+
+**Rule: All gRPC calls must run in goroutines. UI updates must use `fyne.Do()`.**
 
 ```go
-// Main window structure
-app := app.New()
-window := app.NewWindow("Grotto")
+// CORRECT: gRPC in goroutine, UI update via fyne.Do()
+func (c *Controller) InvokeMethod(ctx context.Context) {
+    c.state.response.loading.Set(true)
 
-// Tabs for input modes
-inputTabs := container.NewAppTabs(
-    container.NewTabItem("Text", textEditor),
-    container.NewTabItem("Form", formContainer),
-)
+    go func() {
+        resp, err := c.invoker.Invoke(ctx, method, request)
 
-// Form from proto fields (pseudo-code)
-form := widget.NewForm(
-    widget.NewFormItem("user_id", widget.NewEntry()),
-    widget.NewFormItem("enabled", widget.NewCheck("", nil)),
-    widget.NewFormItem("status", widget.NewSelect(enumValues, nil)),
-)
+        fyne.Do(func() {  // Safe UI update from goroutine
+            c.state.response.loading.Set(false)
+            if err != nil {
+                c.state.response.textData.Set(err.Error())
+                return
+            }
+            c.state.response.textData.Set(protojson.Format(resp))
+        })
+    }()
+}
+
+// For streaming, append messages as they arrive
+fyne.Do(func() {
+    current, _ := c.state.response.messages.Get()
+    c.state.response.messages.Set(append(current, msg))
+})
+```
+
+### Custom Widget Pattern
+
+```go
+type CustomWidget struct {
+    widget.BaseWidget  // MUST embed this
+
+    // Widget state
+    data string
+}
+
+func NewCustomWidget() *CustomWidget {
+    w := &CustomWidget{}
+    w.ExtendBaseWidget(w)  // CRITICAL: Register widget
+    return w
+}
+
+func (w *CustomWidget) CreateRenderer() fyne.WidgetRenderer {
+    // Return renderer that handles layout and drawing
+}
+```
+
+### Testing Fyne Applications
+
+```go
+func TestWidget(t *testing.T) {
+    app := test.NewApp()  // Headless test app
+    defer app.Quit()
+
+    w := NewCustomWidget()
+    window := test.NewWindow(w)
+    defer window.Close()
+
+    test.Type(entry, "test input")  // Simulate user interaction
+    assert.Equal(t, expected, widget.value)
+}
 ```
 
 ---
@@ -177,19 +287,75 @@ func loadWellKnownTypes() []*descriptorpb.FileDescriptorProto {
 
 ```go
 import (
-    // gRPC reflection client
+    // gRPC reflection client (auto-detects v1/v1alpha)
     "github.com/jhump/protoreflect/grpcreflect"
 
     // Lenient descriptor parsing
     "github.com/jhump/protoreflect/desc"
 
-    // Dynamic message construction
-    "github.com/jhump/protoreflect/dynamic"
+    // Dynamic gRPC invocation (unified API for all RPC types)
+    "github.com/jhump/protoreflect/dynamic/grpcdynamic"
+
+    // Dynamic message construction (v2 API preferred over deprecated dynamic)
+    "google.golang.org/protobuf/types/dynamicpb"
+
+    // JSON marshaling for text mode
+    "google.golang.org/protobuf/encoding/protojson"
 
     // Standard gRPC
     "google.golang.org/grpc"
-    "google.golang.org/grpc/reflection/grpc_reflection_v1"
+    "google.golang.org/grpc/keepalive"
+    "google.golang.org/grpc/metadata"
 )
+```
+
+### Reflection Client Setup (Critical Pattern)
+
+```go
+// Auto-detects v1 or v1alpha, with graceful fallback
+refClient := grpcreflect.NewClientAuto(ctx, conn)
+defer refClient.Reset()
+
+// Configure for permissive operation (critical for broken servers)
+refClient.AllowFallbackResolver(
+    protoregistry.GlobalFiles,  // Fall back to local well-known types
+    protoregistry.GlobalTypes,  // Extension types
+)
+refClient.AllowMissingFileDescriptors() // Build descriptors even with missing imports
+```
+
+### Connection Management
+
+```go
+// Use NewClient (not deprecated Dial)
+conn, err := grpc.NewClient(
+    addr,
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+    grpc.WithKeepaliveParams(keepalive.ClientParameters{
+        Time:                10 * time.Second, // Ping every 10s (GUI apps need this)
+        Timeout:             3 * time.Second,
+        PermitWithoutStream: true,             // Keep alive even when idle
+    }),
+)
+```
+
+### Dynamic Invocation
+
+```go
+// Unified stub for all RPC types
+stub := grpcdynamic.NewStub(conn)
+
+// Unary
+response, err := stub.InvokeRpc(ctx, method, request)
+
+// Server streaming
+stream, err := stub.InvokeRpcServerStream(ctx, method, request)
+
+// Client streaming
+stream, err := stub.InvokeRpcClientStream(ctx, method)
+
+// Bidirectional
+stream, err := stub.InvokeRpcBidiStream(ctx, method)
 ```
 
 ---
@@ -284,29 +450,595 @@ func (s *RequestState) UpdateField(path string, value any) {
 grotto/
 ├── cmd/
 │   └── grotto/
-│       └── main.go           # Entry point
+│       └── main.go              # Minimal entry point
 ├── internal/
-│   ├── ui/
-│   │   ├── app.go            # Main window setup
-│   │   ├── service_tree.go   # Service/method browser
-│   │   ├── request_panel.go  # Input tabs (text/form)
-│   │   ├── response_panel.go # Output tabs (text/form)
-│   │   └── form_builder.go   # Proto → Fyne form generator
-│   ├── reflection/
-│   │   ├── client.go         # gRPC reflection client
-│   │   ├── wellknown.go      # Well-known types bundle
-│   │   ├── fixes.go          # Descriptor malformation fixes
-│   │   └── resolver.go       # Type resolution strategies
-│   ├── grpc/
-│   │   ├── invoker.go        # Request execution
-│   │   ├── streaming.go      # Stream handling
-│   │   └── tls.go            # TLS configuration
-│   └── storage/
-│       ├── workspace.go      # Saved servers/requests
-│       └── history.go        # Request history
+│   ├── app/                     # Application bootstrap & DI
+│   │   ├── app.go               # Application coordination, wiring
+│   │   └── config.go            # Configuration (env vars, config file)
+│   ├── domain/                  # Core business logic (UI-independent)
+│   │   ├── service.go           # Service/method models
+│   │   ├── request.go           # Request state management
+│   │   ├── workspace.go         # Workspace model
+│   │   └── history.go           # History model
+│   ├── model/                   # Centralized state with Fyne bindings
+│   │   └── state.go             # ApplicationState with binding types
+│   ├── ui/                      # Fyne UI layer (thin)
+│   │   ├── window.go            # Main window setup
+│   │   ├── browser/             # Service browser components
+│   │   │   └── tree.go          # ServiceTreeWidget
+│   │   ├── request/             # Request panel components
+│   │   │   ├── panel.go         # Input tabs (text/form)
+│   │   │   └── form_builder.go  # Proto → Fyne form generator
+│   │   ├── response/            # Response panel components
+│   │   │   ├── panel.go         # Output tabs (text/form)
+│   │   │   └── streaming.go     # StreamingMessagesWidget
+│   │   └── errors.go            # Error dialogs, status bar
+│   ├── reflection/              # gRPC reflection client
+│   │   ├── client.go            # Reflection wrapper with fallback
+│   │   ├── wellknown.go         # Well-known types bundle
+│   │   ├── fixes.go             # Descriptor malformation fixes
+│   │   └── resolver.go          # Type resolution strategies
+│   ├── grpc/                    # gRPC client operations
+│   │   ├── connection.go        # Connection manager with state monitoring
+│   │   ├── invoker.go           # Request executor (unary/streaming)
+│   │   ├── handler.go           # InvocationHandler interface
+│   │   └── metadata.go          # Header management
+│   ├── errors/                  # Domain-specific error types
+│   │   ├── errors.go            # Sentinel & typed errors
+│   │   └── classify.go          # Error classification for UI
+│   ├── logging/                 # Structured logging setup
+│   │   └── logger.go            # slog configuration, platform paths
+│   └── storage/                 # Persistence layer
+│       ├── repository.go        # Storage interface
+│       ├── json.go              # JSON file implementation
+│       └── memory.go            # In-memory (for tests)
+├── testdata/                    # Test fixtures (Go convention)
+│   └── protos/
+│       └── test.proto
 ├── go.mod
 ├── go.sum
 └── README.md
+```
+
+### Key Structural Decisions
+
+1. **`internal/app/`** - Application bootstrap and dependency injection. All components wired here via constructor injection.
+
+2. **`internal/domain/`** - UI-independent business logic. Can be tested without Fyne.
+
+3. **`internal/model/`** - Centralized state using Fyne's `binding` package for reactive UI updates.
+
+4. **Split `internal/ui/`** - Organized by feature area (browser, request, response) to prevent monolithic package.
+
+5. **`internal/errors/`** - Domain-specific error types with severity classification for proper UI presentation.
+
+6. **`internal/logging/`** - Structured logging with `slog` (Go 1.21+ stdlib), platform-specific log file paths.
+
+7. **`testdata/`** - Standard Go convention for test fixtures.
+
+---
+
+## Error Handling & Logging
+
+### Error Strategy
+
+Classify errors by severity for proper UI presentation:
+
+```go
+// internal/errors/errors.go
+var (
+    ErrConnectionFailed      = errors.New("connection failed")
+    ErrReflectionUnavailable = errors.New("reflection not available")
+    ErrInvalidDescriptor     = errors.New("invalid descriptor")
+    ErrUserCancelled         = errors.New("user cancelled operation")
+)
+
+type ValidationError struct {
+    Field   string
+    Message string
+}
+
+// internal/errors/classify.go
+type ErrorSeverity int
+
+const (
+    SeverityInfo    ErrorSeverity = iota // User should know, not blocking
+    SeverityWarning                      // Degraded functionality
+    SeverityError                        // Operation failed, can retry
+    SeverityFatal                        // Application must exit
+)
+
+type UIError struct {
+    Err      error
+    Severity ErrorSeverity
+    Title    string          // Short user-facing title
+    Message  string          // Detailed user-facing message
+    Recovery []string        // Suggested actions (bullet points)
+    Actions  []ErrorAction   // Buttons for user actions
+    Details  string          // Technical details (collapsed by default)
+}
+
+type ErrorAction struct {
+    Label   string
+    Handler func()
+}
+
+func ClassifyError(err error) *UIError {
+    switch {
+    case errors.Is(err, context.DeadlineExceeded):
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Request Timeout",
+            Message:  "The server took too long to respond.",
+            Recovery: []string{"Try again", "Increase the timeout setting"},
+            Actions:  []ErrorAction{{Label: "Retry"}, {Label: "Settings"}},
+        }
+    case errors.Is(err, ErrReflectionUnavailable):
+        return &UIError{
+            Severity: SeverityWarning,
+            Title:    "Reflection Not Available",
+            Message:  "This server doesn't support gRPC reflection.",
+            Recovery: []string{"Import proto files manually"},
+            Actions:  []ErrorAction{{Label: "Import Proto Files"}},
+        }
+    // ... more cases (see ClassifyGRPCError in UX section for gRPC codes)
+    }
+}
+```
+
+### Logging with slog (Go 1.21+)
+
+```go
+// internal/logging/logger.go
+func InitLogger(appName string, debug bool) (*slog.Logger, error) {
+    logPath, err := getLogFilePath(appName)  // Platform-specific
+    if err != nil {
+        return nil, err
+    }
+
+    logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        return nil, err
+    }
+
+    level := slog.LevelInfo
+    if debug {
+        level = slog.LevelDebug
+    }
+
+    return slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{
+        Level:     level,
+        AddSource: debug,
+    })), nil
+}
+
+// Platform-specific log paths:
+// - macOS:   ~/Library/Logs/grotto/grotto.log
+// - Linux:   ~/.local/state/grotto/grotto.log
+// - Windows: %LOCALAPPDATA%\grotto\Logs\grotto.log
+```
+
+### Panic Recovery
+
+```go
+// cmd/grotto/main.go
+func runApp(logger *slog.Logger) (err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            logger.Error("panic recovered",
+                slog.Any("panic", r),
+                slog.String("stack", string(debug.Stack())),
+            )
+            err = fmt.Errorf("panic: %v", r)
+        }
+    }()
+
+    app := ui.NewApp(logger)
+    app.Run()
+    return nil
+}
+
+// For goroutines (async operations)
+go func() {
+    defer func() {
+        if r := recover(); r != nil {
+            logger.Error("panic in async invoke", slog.Any("panic", r))
+            respChan <- &Response{Error: fmt.Errorf("internal error: %v", r)}
+        }
+    }()
+    // ... work
+}()
+```
+
+### Graceful Degradation
+
+| Scenario | Behavior |
+|----------|----------|
+| Malformed descriptors | Fix and continue, log warning |
+| Network timeout | Retry with backoff, show status |
+| Reflection v1 fails | Fall back to v1alpha |
+| Validation error | Show in UI, allow correction |
+| User cancellation | Clean abort, restore state |
+
+---
+
+## User Experience (UX)
+
+### Theming: Light/Dark Mode
+
+Grotto supports three theme modes: System Default (follows OS preference), Light, and Dark.
+
+#### The `forcedVariant` Pattern
+
+Fyne's `theme.LightTheme()` and `theme.DarkTheme()` are deprecated. Use a wrapper that forces the variant:
+
+```go
+// internal/ui/theme.go
+type forcedVariant struct {
+    fyne.Theme
+    variant fyne.ThemeVariant
+}
+
+func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+    return f.Theme.Color(name, f.variant)
+}
+
+func ApplyTheme(a fyne.App, mode string) {
+    switch mode {
+    case "dark":
+        a.Settings().SetTheme(&forcedVariant{
+            Theme:   theme.DefaultTheme(),
+            variant: theme.VariantDark,
+        })
+    case "light":
+        a.Settings().SetTheme(&forcedVariant{
+            Theme:   theme.DefaultTheme(),
+            variant: theme.VariantLight,
+        })
+    default: // "system"
+        a.Settings().SetTheme(theme.DefaultTheme())
+    }
+}
+```
+
+#### Theme Persistence
+
+Use Fyne's Preferences API to save/restore theme choice:
+
+```go
+const themePreferenceKey = "appTheme"
+
+func LoadThemePreference(a fyne.App) {
+    mode := a.Preferences().StringWithFallback(themePreferenceKey, "system")
+    ApplyTheme(a, mode)
+}
+
+func SaveThemePreference(a fyne.App, mode string) {
+    a.Preferences().SetString(themePreferenceKey, mode)
+    ApplyTheme(a, mode)
+}
+```
+
+#### Theme Selector UI
+
+```go
+func CreateThemeSelector(a fyne.App) *widget.Select {
+    selector := widget.NewSelect(
+        []string{"System Default", "Light", "Dark"},
+        func(selected string) {
+            var mode string
+            switch selected {
+            case "Dark":
+                mode = "dark"
+            case "Light":
+                mode = "light"
+            default:
+                mode = "system"
+            }
+            SaveThemePreference(a, mode)
+        },
+    )
+
+    // Set initial selection from preferences
+    saved := a.Preferences().StringWithFallback(themePreferenceKey, "system")
+    switch saved {
+    case "dark":
+        selector.SetSelected("Dark")
+    case "light":
+        selector.SetSelected("Light")
+    default:
+        selector.SetSelected("System Default")
+    }
+    return selector
+}
+```
+
+#### Platform Auto-Detection
+
+Fyne automatically monitors system theme changes:
+- **macOS**: `AppleInterfaceThemeChangedNotification`
+- **Windows**: Registry-based detection
+- **Linux**: Freedesktop Portal D-Bus signals (Fyne v2.3+)
+
+Environment override: `FYNE_THEME=light ./grotto` or `FYNE_THEME=dark ./grotto`
+
+---
+
+### Error Communication
+
+#### Error Display Strategy
+
+| Error Source | Severity | Display Method | Blocking? | Example |
+|--------------|----------|----------------|-----------|---------|
+| Connection refused | Error | Modal dialog | Yes | Server not reachable |
+| Request timeout | Error | Modal with retry | Yes | Server took too long |
+| Auth failure | Error | Modal with action | Yes | Credentials required |
+| Reflection unavailable | Warning | Inline banner | No | Fall back to manual proto |
+| Invalid field value | Error | Inline next to field | No | Number out of range |
+| Successful invoke | Success | Toast notification | No | Request completed |
+| Retry attempt | Info | Status bar | No | Retrying (2/3)... |
+| Auto-fixed descriptor | Info | Log only | No | No user action needed |
+
+#### gRPC Status Code Translation
+
+Map gRPC codes to user-friendly messages:
+
+```go
+// internal/errors/grpc.go
+func ClassifyGRPCError(err error) *UIError {
+    st, ok := status.FromError(err)
+    if !ok {
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Unexpected Error",
+            Message:  err.Error(),
+            Recovery: []string{"Try again"},
+        }
+    }
+
+    switch st.Code() {
+    case codes.Unavailable:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Cannot Connect to Server",
+            Message:  "The server is not responding.",
+            Recovery: []string{
+                "Check that the server is running",
+                "Verify the address and port",
+                "Check your network connection",
+            },
+            Actions:  []ErrorAction{{Label: "Retry"}, {Label: "Edit Connection"}},
+            Details:  fmt.Sprintf("gRPC: %s - %s", st.Code(), st.Message()),
+        }
+
+    case codes.DeadlineExceeded:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Request Timeout",
+            Message:  "The server took too long to respond.",
+            Recovery: []string{"Try again", "Increase timeout setting"},
+            Actions:  []ErrorAction{{Label: "Retry"}, {Label: "Settings"}},
+        }
+
+    case codes.Unauthenticated:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Authentication Required",
+            Message:  "You need to authenticate to access this service.",
+            Recovery: []string{"Add credentials in metadata"},
+            Actions:  []ErrorAction{{Label: "Add Credentials"}},
+        }
+
+    case codes.PermissionDenied:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Access Denied",
+            Message:  "You don't have permission to call this method.",
+            Recovery: []string{"Contact administrator"},
+        }
+
+    case codes.InvalidArgument:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Invalid Request",
+            Message:  "The request contains invalid data.",
+            Recovery: []string{"Check field values", "See details for specifics"},
+            Actions:  []ErrorAction{{Label: "View Details"}, {Label: "Edit Request"}},
+            Details:  st.Message(),
+        }
+
+    case codes.Internal:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Server Error",
+            Message:  "The server encountered an unexpected error.",
+            Recovery: []string{"Try again later", "Contact server administrator"},
+            Actions:  []ErrorAction{{Label: "Retry"}},
+        }
+
+    case codes.Unimplemented:
+        return &UIError{
+            Severity: SeverityWarning,
+            Title:    "Method Not Available",
+            Message:  "This method is not implemented on the server.",
+            Recovery: []string{"Check method name", "Verify server version"},
+        }
+
+    default:
+        return &UIError{
+            Severity: SeverityError,
+            Title:    "Request Failed",
+            Message:  st.Message(),
+            Recovery: []string{"Try again"},
+            Details:  fmt.Sprintf("gRPC: %s", st.Code()),
+        }
+    }
+}
+```
+
+#### Error Dialog Pattern
+
+```go
+// internal/ui/errors/display.go
+func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
+    grpcErr := errors.ClassifyGRPCError(err)
+
+    // Build content
+    content := container.NewVBox(
+        widget.NewLabel(grpcErr.Message),
+    )
+
+    // Add recovery suggestions
+    if len(grpcErr.Recovery) > 0 {
+        content.Add(widget.NewSeparator())
+        content.Add(widget.NewLabel("You can:"))
+        for _, suggestion := range grpcErr.Recovery {
+            content.Add(widget.NewLabel("• " + suggestion))
+        }
+    }
+
+    // Add expandable technical details
+    if grpcErr.Details != "" {
+        accordion := widget.NewAccordion(
+            widget.NewAccordionItem("Technical Details",
+                widget.NewLabel(grpcErr.Details)),
+        )
+        content.Add(accordion)
+    }
+
+    d := dialog.NewCustom(grpcErr.Title, "Close", content, window)
+    d.Show()
+}
+```
+
+#### Inline Validation Errors
+
+For form fields, show errors inline without dialogs:
+
+```go
+// Show red text below problematic field
+type ValidatedEntry struct {
+    widget.Entry
+    errorLabel *widget.Label
+}
+
+func (e *ValidatedEntry) SetError(msg string) {
+    e.errorLabel.SetText(msg)
+    e.errorLabel.Show()
+}
+
+func (e *ValidatedEntry) ClearError() {
+    e.errorLabel.Hide()
+}
+```
+
+#### Connection State Indicator
+
+Display connection health in status bar:
+
+```go
+type ConnectionState int
+
+const (
+    StateDisconnected ConnectionState = iota  // Gray
+    StateConnecting                           // Yellow/Amber
+    StateConnected                            // Green
+    StateError                                // Red
+)
+
+// Status bar shows: "● Connected to api.example.com:50051"
+```
+
+---
+
+### Auto-Retry with Backoff
+
+Automatically retry transient errors:
+
+```go
+// internal/grpc/retry.go
+type RetryConfig struct {
+    MaxAttempts       int
+    InitialBackoff    time.Duration
+    MaxBackoff        time.Duration
+    BackoffMultiplier float64
+}
+
+var DefaultRetryConfig = RetryConfig{
+    MaxAttempts:       3,
+    InitialBackoff:    100 * time.Millisecond,
+    MaxBackoff:        5 * time.Second,
+    BackoffMultiplier: 2.0,
+}
+
+// Only retry transient errors
+func isRetryable(err error) bool {
+    st, ok := status.FromError(err)
+    if !ok {
+        return false
+    }
+    switch st.Code() {
+    case codes.Unavailable, codes.DeadlineExceeded,
+         codes.ResourceExhausted, codes.Internal:
+        return true
+    }
+    return false
+}
+```
+
+**UX during retry:**
+- Show "Retrying... (2/3)" in status bar
+- Allow user to cancel
+- On success after retry: brief toast "Connected after 2 attempts"
+- On max retries: show modal with "Retry Manually" option
+
+---
+
+### Form State Preservation
+
+**Critical UX rule: Never clear user input on error.**
+
+```go
+type FormState struct {
+    fields map[string]interface{}
+    errors map[string]string
+}
+
+func (f *FormState) OnError(err error) {
+    // Show error, but preserve all field values
+    // Only clear error messages when user edits the field
+}
+```
+
+---
+
+### Error Message Best Practices
+
+Based on platform guidelines (Apple HIG, Windows UX):
+
+1. **Be specific** - "Cannot connect to api.example.com" not "Connection error"
+2. **Explain why** - "The server is not responding" not just "Failed"
+3. **Offer recovery** - Actionable steps the user can take
+4. **Don't blame the user** - "Invalid email format" not "You entered wrong email"
+5. **Technical details: hidden by default** - Expandable accordion for debugging
+6. **One problem at a time** - Don't overwhelm with multiple issues
+
+**Example Error Messages:**
+
+```
+❌ Poor: Error: Connection failed
+
+✅ Good: Cannot Connect to Server
+        The server at api.example.com:50051 is not responding.
+
+        You can:
+        • Check that the server is running
+        • Verify the address and port
+        • Check your network connection
+
+        [Retry]  [Edit Connection]
+
+        ▸ Technical Details
 ```
 
 ---
@@ -354,33 +1086,94 @@ grotto/
 
 ```go
 require (
-    fyne.io/fyne/v2 v2.4+
-    github.com/jhump/protoreflect v1.17+
-    google.golang.org/grpc v1.60+
-    google.golang.org/protobuf v1.32+
+    fyne.io/fyne/v2 v2.4+               // GUI framework
+    github.com/jhump/protoreflect v1.17+ // Reflection client, grpcdynamic
+    google.golang.org/grpc v1.77+        // gRPC (use NewClient, not Dial)
+    google.golang.org/protobuf v1.32+    // dynamicpb, protojson
 )
+
+// Note: Go 1.21+ required for slog (structured logging)
+```
+
+### Dependency Injection Pattern
+
+Use constructor injection in `internal/app/app.go`:
+
+```go
+type App struct {
+    config      *Config
+    logger      *slog.Logger
+    connManager *grpc.ConnectionManager
+    storage     storage.Repository  // Interface, not concrete type
+    window      *ui.Window
+}
+
+func New(cfg *Config) (*App, error) {
+    logger, err := logging.InitLogger("grotto", cfg.Debug)
+    if err != nil {
+        return nil, err
+    }
+
+    // Wire dependencies via constructors
+    connManager := grpc.NewConnectionManager(logger)
+    storage := storage.NewJSONRepository(cfg.StoragePath)  // Implements Repository
+    window := ui.NewWindow(connManager, storage, logger)
+
+    return &App{
+        config:      cfg,
+        logger:      logger,
+        connManager: connManager,
+        storage:     storage,
+        window:      window,
+    }, nil
+}
 ```
 
 ---
 
-## Open Questions
+## Open Questions & Decisions
+
+### Resolved Questions
+
+1. **Streaming UI?** → **Use `binding.UntypedList` with auto-scrolling widget**
+   - Server streaming: `StreamingMessagesWidget` that appends to list, auto-scrolls
+   - Client streaming: Queue with send button, show "sent" count
+   - Bidirectional: Split panel with separate send/receive lists
+
+2. **Persistence?** → **JSON files (simple, human-readable)**
+   - Storage interface in `internal/storage/repository.go`
+   - JSON implementation for production
+   - In-memory implementation for tests
+   - Files stored in `~/.grotto/` (cross-platform via `os.UserHomeDir()`)
+
+3. **Architecture?** → **Modified MVC with Fyne Data Binding**
+   - Centralized state in `internal/model/` using `binding` package
+   - Controllers for business logic, views are thin UI bindings
+   - Automatic UI updates via binding listeners
+
+4. **Threading?** → **goroutines + `fyne.Do()`**
+   - All gRPC calls in goroutines
+   - UI updates via `fyne.Do()` (fire-and-forget) or `fyne.DoAndWait()` (sync)
+   - Context for user cancellation
+
+5. **Logging?** → **slog (Go 1.21+ stdlib)**
+   - Platform-specific log file paths
+   - JSON format for structured logs
+   - DEBUG level in development, INFO in production
+
+### Open Questions
 
 1. **Embedded code editor?** Fyne's Entry is basic. Options:
-   - Use Entry with custom styling (simplest)
-   - Embed external editor component
-   - Build syntax highlighting on top of Entry
+   - Use multiline Entry with custom styling (simplest, start here)
+   - Build syntax highlighting later if needed
+   - Consider `fyne.io/x/fyne` extensions
 
-2. **Streaming UI?** How to display:
-   - Server streaming: Append messages to scrolling list
-   - Client streaming: Queue of messages to send
-   - Bidirectional: Split view with send/receive
-
-3. **Large messages?** Proto messages can be huge:
-   - Virtual scrolling for repeated fields
+2. **Large messages?** Proto messages can be huge:
+   - Virtual scrolling for repeated fields (Fyne `List` supports this)
    - Lazy loading for nested messages
-   - Collapse by default
+   - Collapse by default, expand on demand
 
-4. **Persistence?** Options:
-   - SQLite (robust but adds dependency)
-   - JSON files (simple, human-readable)
-   - Badger (Go-native KV store, used in Wombat)
+3. **Offline proto files?** For servers without reflection:
+   - Parse `.proto` files directly
+   - Support compiled `.protoset` files (like grpcurl)
+   - Lower priority (Phase 5+)
