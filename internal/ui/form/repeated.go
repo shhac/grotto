@@ -131,16 +131,72 @@ func (r *RepeatedFieldWidget) GetValue() interface{} {
 			if nmw, ok := w.(*NestedMessageWidget); ok {
 				values = append(values, nmw.GetValue())
 			} else if entry, ok := w.(*widget.Entry); ok {
-				values = append(values, entry.Text)
+				// Parse value based on field kind
+				val := r.parseEntryValue(entry.Text)
+				values = append(values, val)
 			} else if check, ok := w.(*widget.Check); ok {
 				values = append(values, check.Checked)
 			} else if sel, ok := w.(*widget.Select); ok {
-				values = append(values, sel.Selected)
+				// Convert enum name to number for protobuf
+				if r.fd.Kind() == protoreflect.EnumKind {
+					enumValues := r.fd.Enum().Values()
+					for i := 0; i < enumValues.Len(); i++ {
+						ev := enumValues.Get(i)
+						if string(ev.Name()) == sel.Selected {
+							values = append(values, int32(ev.Number()))
+							break
+						}
+					}
+				} else {
+					values = append(values, sel.Selected)
+				}
 			}
 		}
 	}
 
 	return values
+}
+
+// parseEntryValue parses the entry text based on the field kind
+func (r *RepeatedFieldWidget) parseEntryValue(text string) interface{} {
+	switch r.fd.Kind() {
+	case protoreflect.StringKind:
+		return text
+	case protoreflect.BytesKind:
+		return text // Keep as string, will be converted later
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return int32(0)
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return int64(0)
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return uint32(0)
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return uint64(0)
+	case protoreflect.FloatKind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return float32(0)
+	case protoreflect.DoubleKind:
+		if val, err := parseScalarValue(text, r.fd); err == nil {
+			return val
+		}
+		return float64(0)
+	default:
+		return text
+	}
 }
 
 // SetValue populates the list from a slice
@@ -163,12 +219,27 @@ func (r *RepeatedFieldWidget) SetValue(v interface{}) {
 					if nmw, ok := wid.(*NestedMessageWidget); ok {
 						nmw.SetValue(item)
 					} else if entry, ok := wid.(*widget.Entry); ok {
-						if str, ok := item.(string); ok {
-							entry.SetText(str)
-						}
+						// Handle both string and numeric values
+						entry.SetText(fmt.Sprintf("%v", item))
 					} else if check, ok := wid.(*widget.Check); ok {
 						if b, ok := item.(bool); ok {
 							check.SetChecked(b)
+						}
+					} else if sel, ok := wid.(*widget.Select); ok {
+						// Handle enum values (could be string name or int value)
+						if str, ok := item.(string); ok {
+							sel.SetSelected(str)
+						} else if num, ok := item.(float64); ok {
+							// JSON numbers come as float64 - convert to enum name
+							enumValues := r.fd.Enum().Values()
+							enumNum := int32(num)
+							for i := 0; i < enumValues.Len(); i++ {
+								ev := enumValues.Get(i)
+								if int32(ev.Number()) == enumNum {
+									sel.SetSelected(string(ev.Name()))
+									break
+								}
+							}
 						}
 					}
 				}

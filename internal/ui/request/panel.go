@@ -17,18 +17,15 @@ import (
 
 // RequestPanel handles request input.
 //
-// SYNC ARCHITECTURE (to prevent regressions):
-// The Text/Form mode sync uses a single 'syncing' flag to prevent infinite loops.
-// The flow is:
-//   1. User clicks tab OR keyboard shortcut triggers mode change
-//   2. SetOnModeChange callback fires, sets syncing=true
-//   3. state.Mode.Set() updates the binding
-//   4. state.Mode listener fires but returns early (syncing=true)
-//   5. syncModeData() runs to sync form↔text data
-//   6. syncing=false (defer)
+// SYNC ARCHITECTURE:
+// Mode switching (Text <-> Form) is handled by ModeSynchronizer.
+// See mode_sync.go for detailed documentation on how sync works.
 //
-// IMPORTANT: syncModeData() must NOT have its own syncing guard - it runs
-// while syncing=true and that's intentional.
+// Key points:
+//   - ModeSynchronizer owns the syncing flag and all sync logic
+//   - SetOnModeChange calls synchronizer.SwitchMode()
+//   - state.Mode listener checks synchronizer.IsSyncing() before acting
+//   - This prevents infinite loops that cause UI freezes
 type RequestPanel struct {
 	widget.BaseWidget
 
@@ -43,7 +40,9 @@ type RequestPanel struct {
 	formPlaceholder *widget.Label                  // Shown when no method selected
 	formContainer   *fyne.Container                // Container for form or placeholder
 	currentDesc     protoreflect.MessageDescriptor // Current message descriptor
-	syncing         bool                           // Flag to prevent sync loops
+
+	// Mode synchronization (prevents freeze bugs)
+	synchronizer *ModeSynchronizer
 
 	// Mode tabs
 	modeTabs *components.ModeTabs // Text/Form mode toggle
@@ -84,6 +83,9 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 		logger:       logger,
 	}
 
+	// Create mode synchronizer (handles Text <-> Form sync)
+	p.synchronizer = NewModeSynchronizer(state.Mode, state.TextData, logger)
+
 	// Method label shows which method is selected
 	p.methodLabel = widget.NewLabel("No method selected")
 	p.methodLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -105,23 +107,15 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 		p.formContainer,
 	)
 
-	// Listen for tab changes and sync to state
+	// Listen for tab changes - delegate to synchronizer
 	p.modeTabs.SetOnModeChange(func(mode string) {
-		// Prevent sync loops when user clicks tab
-		if p.syncing {
-			return
-		}
-		p.syncing = true
-		defer func() { p.syncing = false }()
-
-		_ = p.state.Mode.Set(mode)
-		p.syncModeData(mode)
+		p.synchronizer.SwitchMode(mode)
 	})
 
-	// Listen for state.Mode changes (programmatic changes)
+	// Listen for state.Mode changes (programmatic changes from outside)
 	state.Mode.AddListener(binding.NewDataListener(func() {
-		// Prevent sync loops
-		if p.syncing {
+		// Skip if synchronizer is handling a mode change
+		if p.synchronizer.IsSyncing() {
 			return
 		}
 		mode, _ := state.Mode.Get()
@@ -213,6 +207,7 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 		p.methodLabel.SetText("No method selected")
 		p.currentDesc = nil
 		p.formBuilder = nil
+		p.synchronizer.SetFormBuilder(nil)
 		p.formContainer.Objects = []fyne.CanvasObject{container.NewCenter(p.formPlaceholder)}
 		p.formContainer.Refresh()
 	} else {
@@ -222,6 +217,7 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 		// Build form for this method
 		if inputDesc != nil {
 			p.formBuilder = form.NewFormBuilder(inputDesc)
+			p.synchronizer.SetFormBuilder(p.formBuilder)
 			formUI := p.formBuilder.Build()
 			p.formContainer.Objects = []fyne.CanvasObject{formUI}
 			p.formContainer.Refresh()
@@ -232,54 +228,6 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 		}
 	}
 	p.Refresh()
-}
-
-// syncModeData synchronizes data when switching between modes.
-// NOTE: This function must NOT have its own syncing guard - the caller
-// (SetOnModeChange callback) already sets syncing=true before calling this.
-// Adding a guard here would cause the function to do nothing.
-func (p *RequestPanel) syncModeData(mode string) {
-	if mode == "form" {
-		// Switching to form mode: parse text JSON and populate form
-		p.syncTextToForm()
-	} else if mode == "text" {
-		// Switching to text mode: convert form to JSON
-		p.syncFormToText()
-	}
-}
-
-// syncTextToForm parses the text editor JSON and populates the form
-func (p *RequestPanel) syncTextToForm() {
-	if p.formBuilder == nil {
-		return
-	}
-
-	textData, _ := p.state.TextData.Get()
-	if textData == "" {
-		return
-	}
-
-	// Try to parse and populate form
-	if err := p.formBuilder.FromJSON(textData); err != nil {
-		p.logger.Warn("failed to populate form from JSON", slog.Any("error", err))
-	}
-}
-
-// syncFormToText converts form values to JSON and updates text editor
-func (p *RequestPanel) syncFormToText() {
-	if p.formBuilder == nil {
-		return
-	}
-
-	// Get JSON from form
-	jsonStr, err := p.formBuilder.ToJSON()
-	if err != nil {
-		p.logger.Warn("failed to convert form to JSON", slog.Any("error", err))
-		return
-	}
-
-	// Update text data binding
-	_ = p.state.TextData.Set(jsonStr)
 }
 
 // addMetadata adds a new metadata header
@@ -311,7 +259,7 @@ func (p *RequestPanel) handleSend() {
 	// If in form mode, sync form to text first
 	currentMode, _ := p.state.Mode.Get()
 	if currentMode == "form" && p.formBuilder != nil {
-		p.syncFormToText()
+		p.synchronizer.SyncFormToTextNow()
 	}
 
 	// Get JSON text from state
