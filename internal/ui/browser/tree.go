@@ -84,26 +84,28 @@ func (b *ServiceBrowser) isBranch(uid string) bool {
 
 // create creates a new tree node widget
 func (b *ServiceBrowser) create(branch bool) fyne.CanvasObject {
-	label := widget.NewLabel("")
-
-	if branch {
-		// Services don't need an icon - tree widget provides expand/collapse chevrons
-		return label
-	}
-
-	// Methods get an icon showing their type
-	icon := canvas.NewImageFromResource(theme.NavigateNextIcon())
+	// Both branches and leaves use same structure for consistency
+	// (Fyne tree widget may have issues with inconsistent structures)
+	icon := canvas.NewImageFromResource(theme.FolderIcon())
 	icon.FillMode = canvas.ImageFillContain
 	icon.SetMinSize(fyne.NewSize(16, 16))
+
+	label := widget.NewLabel("")
 
 	return container.NewHBox(icon, label)
 }
 
 // update updates a tree node widget with the appropriate data
 func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) {
+	cont := obj.(*fyne.Container)
+	icon := cont.Objects[0].(*canvas.Image)
+	label := cont.Objects[1].(*widget.Label)
+
 	if branch {
-		// Services are just labels (tree widget handles expand/collapse visuals)
-		label := obj.(*widget.Label)
+		// Services: use a subtle folder icon to distinguish from methods
+		// (tree widget already shows expand/collapse chevron)
+		icon.Resource = theme.FolderIcon()
+		icon.Refresh()
 
 		// Count methods in this service
 		service := b.findService(uid)
@@ -116,11 +118,7 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 		label.TextStyle = fyne.TextStyle{Bold: true}
 		label.Importance = widget.MediumImportance
 	} else {
-		// Methods have icon + label in a container
-		cont := obj.(*fyne.Container)
-		icon := cont.Objects[0].(*canvas.Image)
-		label := cont.Objects[1].(*widget.Label)
-
+		// Methods: show icon based on method type
 		parts := strings.Split(uid, ":")
 		if len(parts) == 2 {
 			methodName := parts[1]
@@ -155,8 +153,8 @@ func (b *ServiceBrowser) getMethodIcon(method *domain.Method) fyne.Resource {
 		// Client stream - use upload icon
 		return theme.UploadIcon()
 	}
-	// Unary - use navigate next icon
-	return theme.NavigateNextIcon()
+	// Unary - use mail send icon (distinct from tree chevrons)
+	return theme.MailSendIcon()
 }
 
 // getMethodTypeBadge returns a subtle text badge for the method type

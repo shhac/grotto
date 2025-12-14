@@ -57,7 +57,14 @@ func (m *ModeTabs) SetOnModeChange(fn func(mode string)) {
 
 // SetMode programmatically switches to the specified mode.
 // Valid modes are "text" and "form".
+// Does nothing if already on the requested mode (avoids triggering OnSelected redundantly).
 func (m *ModeTabs) SetMode(mode string) {
+	// Guard: don't call Select if already on this mode
+	// This prevents Fyne from firing OnSelected callback unnecessarily
+	if m.GetMode() == mode {
+		return
+	}
+
 	switch mode {
 	case "text":
 		m.tabs.Select(m.textTab)
