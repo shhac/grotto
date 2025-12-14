@@ -41,13 +41,19 @@ type RequestPanel struct {
 	mainContainer  *fyne.Container       // Container that switches between normal/streaming
 
 	// Metadata
-	metadataKeys     binding.StringList // Keys for metadata
-	metadataVals     binding.StringList // Values for metadata
-	metadataList     *widget.List       // Key-value metadata entries
-	keyEntry         *widget.Entry      // New key entry
-	valEntry         *widget.Entry      // New value entry
-	metadataAccordion *widget.Accordion  // Collapsible metadata section
-	sendBtn          *widget.Button
+	metadataKeys binding.StringList // Keys for metadata
+	metadataVals binding.StringList // Values for metadata
+	metadataList *widget.List       // Key-value metadata entries
+	keyEntry     *widget.Entry      // New key entry
+	valEntry     *widget.Entry      // New value entry
+	sendBtn      *widget.Button
+
+	// Top-level tabs (Request Body | Request Metadata)
+	topLevelTabs     *container.AppTabs
+	bodyTab          *container.TabItem
+	metadataTab      *container.TabItem
+	bodyTabContent   *fyne.Container
+	metadataContent  *fyne.Container
 
 	logger *slog.Logger
 
@@ -370,15 +376,7 @@ func (p *RequestPanel) SwitchToFormMode() {
 
 // CreateRenderer returns the widget renderer
 func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
-	// Request body section with mode tabs (for unary/server streaming)
-	requestLabel := widget.NewLabel("Request Body:")
-	requestBox := container.NewBorder(
-		requestLabel,
-		nil, nil, nil,
-		p.modeTabs,
-	)
-
-	// Metadata section with collapsible accordion
+	// Metadata section UI
 	addMetadataBtn := widget.NewButton("+ Add Header", func() {
 		p.addMetadata()
 	})
@@ -392,15 +390,20 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		),
 	)
 
-	metadataContent := container.NewBorder(
+	p.metadataContent = container.NewBorder(
 		nil,
 		metadataEntry,
 		nil, nil,
 		p.metadataList,
 	)
 
-	// Create collapsible accordion for metadata (starts collapsed)
-	p.metadataAccordion = components.NewCollapsibleSection("Request Metadata", metadataContent)
+	// Request body tab content (contains the existing Text/Form mode tabs)
+	p.bodyTabContent = container.NewMax(p.modeTabs)
+
+	// Create top-level tabs
+	p.bodyTab = container.NewTabItem("Request Body", p.bodyTabContent)
+	p.metadataTab = container.NewTabItem("Request Metadata", p.metadataContent)
+	p.topLevelTabs = container.NewAppTabs(p.bodyTab, p.metadataTab)
 
 	// Send button aligned to right (for unary/server streaming)
 	sendBox := container.NewHBox(
@@ -408,24 +411,19 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		p.sendBtn,
 	)
 
-	// Normal layout (unary/server streaming)
-	normalLayout := container.NewVBox(
-		requestBox,
-		widget.NewSeparator(),
-		p.metadataAccordion,
-	)
+	// Normal layout (unary/server streaming) - now uses top-level tabs
+	normalLayout := p.topLevelTabs
 
-	// Streaming layout (client streaming)
-	streamingLayout := container.NewVBox(
-		p.streamingInput,
-		widget.NewSeparator(),
-		p.metadataAccordion,
-	)
+	// Streaming layout (client streaming) - also uses top-level tabs
+	// We'll switch the body tab content to show streaming input
+	streamingBodyContent := container.NewMax(p.streamingInput)
+	streamingBodyTab := container.NewTabItem("Request Body", streamingBodyContent)
+	streamingTabs := container.NewAppTabs(streamingBodyTab, p.metadataTab)
 
 	// Main container that switches between normal and streaming
 	p.mainContainer = container.NewMax()
 	if p.isStreaming {
-		p.mainContainer.Objects = []fyne.CanvasObject{streamingLayout}
+		p.mainContainer.Objects = []fyne.CanvasObject{streamingTabs}
 	} else {
 		p.mainContainer.Objects = []fyne.CanvasObject{normalLayout}
 	}

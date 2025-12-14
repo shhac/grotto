@@ -19,10 +19,10 @@ type ResponsePanel struct {
 	loadingBar    *widget.ProgressBarInfinite
 
 	// Response metadata display
-	metadataKeys      binding.StringList
-	metadataVals      binding.StringList
-	metadataList      *widget.List
-	metadataAccordion *widget.Accordion
+	metadataKeys binding.StringList
+	metadataVals binding.StringList
+	metadataList *widget.List
+	responseTabs *container.DocTabs
 
 	// Streaming widget
 	streamingWidget *StreamingMessagesWidget
@@ -53,7 +53,7 @@ func (p *ResponsePanel) initializeComponents() {
 	// Response text display (read-only multiline entry)
 	p.textDisplay = widget.NewMultiLineEntry()
 	p.textDisplay.Wrapping = fyne.TextWrapWord
-	p.textDisplay.Disable() // Read-only
+	// Note: Not disabling to maintain proper text contrast - user can still select/copy
 
 	// Duration label
 	p.durationLabel = widget.NewLabel("")
@@ -96,29 +96,30 @@ func (p *ResponsePanel) initializeComponents() {
 	// Streaming widget
 	p.streamingWidget = NewStreamingMessagesWidget()
 
-	// Metadata section with collapsible accordion
-	metadataContent := container.NewMax(p.metadataList)
-
-	// Import components package for collapsible section
-	// Create collapsible accordion for response headers (starts collapsed)
-	p.metadataAccordion = widget.NewAccordion(
-		widget.NewAccordionItem("Response Headers", metadataContent),
-	)
-	p.metadataAccordion.Close(0) // Start collapsed to save space
-
-	// Create content containers
-	p.responseContent = container.NewBorder(
-		widget.NewLabel("Response:"),
+	// Create tab content containers
+	// Response tab: text display with duration at bottom
+	responseTabContent := container.NewBorder(
+		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
 			p.durationLabel,
-			widget.NewSeparator(),
-			p.metadataAccordion,
 		),
 		nil,
 		nil,
 		p.textDisplay,
 	)
+
+	// Headers tab: metadata list
+	headersTabContent := container.NewMax(p.metadataList)
+
+	// Create tabbed interface
+	p.responseTabs = container.NewDocTabs(
+		container.NewTabItem("Response", responseTabContent),
+		container.NewTabItem("Headers", headersTabContent),
+	)
+
+	// Create content containers (wrap tabs in a container)
+	p.responseContent = container.NewMax(p.responseTabs)
 
 	p.streamingContent = container.NewMax(p.streamingWidget)
 
@@ -232,10 +233,8 @@ func (p *ResponsePanel) SetResponseMetadata(md map[string]string) {
 
 	p.metadataList.Refresh()
 
-	// Auto-expand the accordion if there are headers to show
-	if len(md) > 0 && p.metadataAccordion != nil {
-		p.metadataAccordion.Open(0)
-	}
+	// Note: We don't auto-switch to Headers tab, just let the user know they're available
+	// The tab will show the headers when the user clicks on it
 }
 
 // ClearResponse clears all response data (for keyboard shortcut)

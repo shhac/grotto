@@ -264,6 +264,13 @@ func (w *MainWindow) handleDisconnect() {
 		_ = w.state.SelectedService.Set("")
 		_ = w.state.SelectedMethod.Set("")
 
+		// Update connection state to reflect disconnection
+		_ = w.connState.State.Set("disconnected")
+		_ = w.connState.Message.Set("Disconnected")
+
+		// Refresh the service browser to clear the tree
+		w.serviceBrowser.Refresh()
+
 		w.logger.Info("disconnected")
 	}()
 }

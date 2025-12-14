@@ -131,7 +131,7 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 					typeBadge := b.getMethodTypeBadge(method)
 					label.SetText(fmt.Sprintf("%s  %s", method.Name, typeBadge))
 					label.TextStyle = fyne.TextStyle{}
-					label.Importance = widget.LowImportance
+					label.Importance = widget.MediumImportance
 				}
 			}
 		}
