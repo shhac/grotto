@@ -315,6 +315,54 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 			fw.Validate = func() error { return nil } // TODO: Add duration validation
 
+		case "google.protobuf.FieldMask":
+			entry := widget.NewMultiLineEntry()
+			entry.SetPlaceHolder("Field paths (one per line or comma-separated)")
+			fw.Widget = entry
+			fw.GetValue = func() interface{} {
+				text := strings.TrimSpace(entry.Text)
+				if text == "" {
+					return []string{}
+				}
+				// Support both newline and comma-separated formats
+				var paths []string
+				if strings.Contains(text, "\n") {
+					// Multi-line format: one path per line
+					lines := strings.Split(text, "\n")
+					for _, line := range lines {
+						line = strings.TrimSpace(line)
+						if line != "" {
+							paths = append(paths, line)
+						}
+					}
+				} else {
+					// Comma-separated format
+					parts := strings.Split(text, ",")
+					for _, part := range parts {
+						part = strings.TrimSpace(part)
+						if part != "" {
+							paths = append(paths, part)
+						}
+					}
+				}
+				return paths
+			}
+			fw.SetValue = func(v interface{}) {
+				// Accept either []string or string
+				switch val := v.(type) {
+				case []string:
+					if len(val) == 0 {
+						entry.SetText("")
+					} else {
+						// Format as one path per line
+						entry.SetText(strings.Join(val, "\n"))
+					}
+				case string:
+					entry.SetText(val)
+				}
+			}
+			fw.Validate = func() error { return nil }
+
 		default:
 			// Unknown message type - should be handled by builder
 			return nil

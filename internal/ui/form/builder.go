@@ -16,6 +16,7 @@ type FormBuilder struct {
 	md             protoreflect.MessageDescriptor
 	fields         map[string]*FieldWidget // Scalar field widgets
 	repeatedFields map[string]*RepeatedFieldWidget
+	mapFields      map[string]*MapFieldWidget
 	nestedFields   map[string]*NestedMessageWidget
 	oneofFields    map[string]*OneofWidget
 	container      *fyne.Container
@@ -27,6 +28,7 @@ func NewFormBuilder(md protoreflect.MessageDescriptor) *FormBuilder {
 		md:             md,
 		fields:         make(map[string]*FieldWidget),
 		repeatedFields: make(map[string]*RepeatedFieldWidget),
+		mapFields:      make(map[string]*MapFieldWidget),
 		nestedFields:   make(map[string]*NestedMessageWidget),
 		oneofFields:    make(map[string]*OneofWidget),
 	}
@@ -56,8 +58,9 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 
 		} else if fd.IsMap() {
 			// Map field - create a specialized map widget
-			mapLabel := widget.NewLabel(fmt.Sprintf("%s (map): Not yet implemented", fieldName))
-			items = append(items, mapLabel)
+			mapWidget := NewMapFieldWidget(fieldName, fd)
+			b.mapFields[fieldName] = mapWidget
+			items = append(items, mapWidget)
 
 		} else if fd.Kind() == protoreflect.MessageKind {
 			// Check if it's a well-known type
@@ -156,6 +159,14 @@ func (b *FormBuilder) GetValues() map[string]interface{} {
 		}
 	}
 
+	// Collect map field values
+	for name, mfw := range b.mapFields {
+		val := mfw.GetValue()
+		if mapVal, ok := val.(map[string]interface{}); ok && len(mapVal) > 0 {
+			values[name] = mapVal
+		}
+	}
+
 	// Collect nested message values
 	for name, nfw := range b.nestedFields {
 		val := nfw.GetValue()
@@ -192,6 +203,13 @@ func (b *FormBuilder) SetValues(values map[string]interface{}) {
 	for name, rfw := range b.repeatedFields {
 		if val, ok := values[name]; ok {
 			rfw.SetValue(val)
+		}
+	}
+
+	// Set map field values
+	for name, mfw := range b.mapFields {
+		if val, ok := values[name]; ok {
+			mfw.SetValue(val)
 		}
 	}
 
@@ -273,6 +291,11 @@ func (b *FormBuilder) Clear() {
 		rfw.Clear()
 	}
 
+	// Clear map fields
+	for _, mfw := range b.mapFields {
+		mfw.Clear()
+	}
+
 	// Clear nested messages
 	for _, nfw := range b.nestedFields {
 		if builder := nfw.GetBuilder(); builder != nil {
@@ -333,7 +356,27 @@ func setFieldValue(msg protoreflect.Message, fd protoreflect.FieldDescriptor, va
 
 	if fd.IsMap() {
 		// Handle map fields
-		// TODO: Implement map support
+		mapVal := msg.Mutable(fd).Map()
+		if m, ok := value.(map[string]interface{}); ok {
+			keyDesc := fd.MapKey()
+			valueDesc := fd.MapValue()
+
+			for k, v := range m {
+				// Convert key to protoreflect.Value
+				keyVal, err := stringToMapKey(k, keyDesc)
+				if err != nil {
+					return err
+				}
+
+				// Convert value to protoreflect.Value
+				val, err := interfaceToValue(valueDesc, v)
+				if err != nil {
+					return err
+				}
+
+				mapVal.Set(keyVal.MapKey(), val)
+			}
+		}
 		return nil
 	}
 
@@ -434,6 +477,22 @@ func valueToInterface(fd protoreflect.FieldDescriptor, v protoreflect.Value) int
 		for i := 0; i < list.Len(); i++ {
 			result[i] = valueToInterface(fd, list.Get(i))
 		}
+		return result
+	}
+
+	if fd.IsMap() {
+		mapVal := v.Map()
+		result := make(map[string]interface{})
+		keyDesc := fd.MapKey()
+		valueDesc := fd.MapValue()
+
+		mapVal.Range(func(k protoreflect.MapKey, v protoreflect.Value) bool {
+			// Convert map key to string (for UI purposes)
+			keyStr := mapKeyToString(k, keyDesc)
+			// Convert value
+			result[keyStr] = valueToInterface(valueDesc, v)
+			return true
+		})
 		return result
 	}
 
@@ -564,4 +623,62 @@ func (b *FormBuilder) BuildForm(md protoreflect.MessageDescriptor) fyne.CanvasOb
 		*b = *newBuilder
 	}
 	return b.Build()
+}
+
+// stringToMapKey converts a string key to a protoreflect.Value for map keys
+func stringToMapKey(key string, fd protoreflect.FieldDescriptor) (protoreflect.Value, error) {
+	switch fd.Kind() {
+	case protoreflect.StringKind:
+		return protoreflect.ValueOfString(key), nil
+	case protoreflect.BoolKind:
+		if key == "true" {
+			return protoreflect.ValueOfBool(true), nil
+		}
+		return protoreflect.ValueOfBool(false), nil
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		if val, err := parseScalarValue(key, fd); err == nil {
+			if i32, ok := val.(int32); ok {
+				return protoreflect.ValueOfInt32(i32), nil
+			}
+		}
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		if val, err := parseScalarValue(key, fd); err == nil {
+			if i64, ok := val.(int64); ok {
+				return protoreflect.ValueOfInt64(i64), nil
+			}
+		}
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		if val, err := parseScalarValue(key, fd); err == nil {
+			if u32, ok := val.(uint32); ok {
+				return protoreflect.ValueOfUint32(u32), nil
+			}
+		}
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		if val, err := parseScalarValue(key, fd); err == nil {
+			if u64, ok := val.(uint64); ok {
+				return protoreflect.ValueOfUint64(u64), nil
+			}
+		}
+	}
+	return protoreflect.Value{}, fmt.Errorf("unsupported map key type: %v", fd.Kind())
+}
+
+// mapKeyToString converts a protoreflect.MapKey to a string for UI display
+func mapKeyToString(k protoreflect.MapKey, fd protoreflect.FieldDescriptor) string {
+	switch fd.Kind() {
+	case protoreflect.StringKind:
+		return k.String()
+	case protoreflect.BoolKind:
+		return fmt.Sprintf("%v", k.Bool())
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		return fmt.Sprintf("%d", k.Int())
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return fmt.Sprintf("%d", k.Int())
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		return fmt.Sprintf("%d", k.Uint())
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return fmt.Sprintf("%d", k.Uint())
+	default:
+		return k.String()
+	}
 }
