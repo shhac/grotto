@@ -84,25 +84,26 @@ func (b *ServiceBrowser) isBranch(uid string) bool {
 
 // create creates a new tree node widget
 func (b *ServiceBrowser) create(branch bool) fyne.CanvasObject {
-	icon := canvas.NewImageFromResource(theme.FolderIcon())
+	label := widget.NewLabel("")
+
+	if branch {
+		// Services don't need an icon - tree widget provides expand/collapse chevrons
+		return label
+	}
+
+	// Methods get an icon showing their type
+	icon := canvas.NewImageFromResource(theme.NavigateNextIcon())
 	icon.FillMode = canvas.ImageFillContain
 	icon.SetMinSize(fyne.NewSize(16, 16))
-
-	label := widget.NewLabel("")
 
 	return container.NewHBox(icon, label)
 }
 
 // update updates a tree node widget with the appropriate data
 func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) {
-	container := obj.(*fyne.Container)
-	icon := container.Objects[0].(*canvas.Image)
-	label := container.Objects[1].(*widget.Label)
-
 	if branch {
-		// This is a service - use menu expand icon (chevron style)
-		icon.Resource = theme.MenuExpandIcon()
-		icon.Refresh()
+		// Services are just labels (tree widget handles expand/collapse visuals)
+		label := obj.(*widget.Label)
 
 		// Count methods in this service
 		service := b.findService(uid)
@@ -115,7 +116,11 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 		label.TextStyle = fyne.TextStyle{Bold: true}
 		label.Importance = widget.MediumImportance
 	} else {
-		// This is a method - format with icon and type badge
+		// Methods have icon + label in a container
+		cont := obj.(*fyne.Container)
+		icon := cont.Objects[0].(*canvas.Image)
+		label := cont.Objects[1].(*widget.Label)
+
 		parts := strings.Split(uid, ":")
 		if len(parts) == 2 {
 			methodName := parts[1]

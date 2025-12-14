@@ -3,6 +3,7 @@ package request
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2/data/binding"
 	"github.com/shhac/grotto/internal/ui/form"
@@ -21,15 +22,15 @@ import (
 //  4. Infinite loop causes UI freeze
 //
 // Solution:
-//  - Single 'syncing' flag guards ALL sync operations
+//  - Atomic 'syncing' flag guards ALL sync operations (lock-free to avoid deadlocks)
 //  - SwitchMode is the ONLY entry point for mode changes
 //  - Sync functions are ONLY called from within SwitchMode (while syncing=true)
 //  - External listeners check syncing flag before doing anything
 //
 // IMPORTANT: If you need to modify sync behavior, do it HERE, not in panel.go
 type ModeSynchronizer struct {
-	mu       sync.Mutex
-	syncing  bool
+	syncing  atomic.Bool         // Atomic flag for lock-free checking
+	mu       sync.Mutex          // Protects builder and callback only
 	mode     binding.String      // Current mode: "text" or "form"
 	textData binding.String      // JSON text data
 	builder  *form.FormBuilder   // Form builder (may be nil)
@@ -65,36 +66,33 @@ func (s *ModeSynchronizer) SetOnModeChanged(fn func(mode string)) {
 
 // IsSyncing returns whether a sync operation is in progress
 // External listeners should check this and return early if true
+// Uses atomic load for lock-free checking (prevents deadlock with binding callbacks)
 func (s *ModeSynchronizer) IsSyncing() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.syncing
+	return s.syncing.Load()
 }
 
 // SwitchMode switches to the specified mode and syncs data.
 // This is the ONLY entry point for mode changes.
 //
 // Flow:
-//  1. Set syncing=true (blocks external listeners)
+//  1. Set syncing=true atomically (blocks external listeners)
 //  2. Update mode binding
 //  3. Sync data in appropriate direction
 //  4. Set syncing=false
 //  5. Call onModeChanged callback
 func (s *ModeSynchronizer) SwitchMode(targetMode string) {
-	s.mu.Lock()
-	if s.syncing {
-		s.mu.Unlock()
+	// Atomic swap: if already syncing, return immediately
+	if !s.syncing.CompareAndSwap(false, true) {
 		return // Already syncing, ignore
 	}
-	s.syncing = true
-	s.mu.Unlock()
 
 	// Use defer to ensure syncing is always reset
 	defer func() {
 		s.mu.Lock()
-		s.syncing = false
 		callback := s.onModeChanged
 		s.mu.Unlock()
+
+		s.syncing.Store(false)
 
 		// Call callback outside lock to avoid deadlock
 		if callback != nil {
@@ -169,19 +167,12 @@ func (s *ModeSynchronizer) syncFormToText() {
 // SyncFormToTextNow syncs form to text immediately (for send operations)
 // Unlike SwitchMode, this doesn't change the mode
 func (s *ModeSynchronizer) SyncFormToTextNow() {
-	s.mu.Lock()
-	if s.syncing {
-		s.mu.Unlock()
+	// Atomic swap: if already syncing, return immediately
+	if !s.syncing.CompareAndSwap(false, true) {
 		return
 	}
-	s.syncing = true
-	s.mu.Unlock()
 
-	defer func() {
-		s.mu.Lock()
-		s.syncing = false
-		s.mu.Unlock()
-	}()
+	defer s.syncing.Store(false)
 
 	s.syncFormToText()
 }
