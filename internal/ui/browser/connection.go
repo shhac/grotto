@@ -63,6 +63,9 @@ func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window) *Conne
 		c.updateButton()
 	}))
 
+	// Initialize button state based on current connection state
+	c.updateButton()
+
 	c.ExtendBaseWidget(c)
 	return c
 }

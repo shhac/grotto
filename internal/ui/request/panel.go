@@ -94,6 +94,13 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 
 	// Listen for tab changes and sync to state
 	p.modeTabs.SetOnModeChange(func(mode string) {
+		// Prevent sync loops when user clicks tab
+		if p.syncing {
+			return
+		}
+		p.syncing = true
+		defer func() { p.syncing = false }()
+
 		_ = p.state.Mode.Set(mode)
 		p.syncModeData(mode)
 	})

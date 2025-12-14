@@ -22,7 +22,7 @@ type ResponsePanel struct {
 	metadataKeys binding.StringList
 	metadataVals binding.StringList
 	metadataList *widget.List
-	responseTabs *container.DocTabs
+	responseTabs *container.AppTabs
 
 	// Streaming widget
 	streamingWidget *StreamingMessagesWidget
@@ -113,7 +113,7 @@ func (p *ResponsePanel) initializeComponents() {
 	headersTabContent := container.NewMax(p.metadataList)
 
 	// Create tabbed interface
-	p.responseTabs = container.NewDocTabs(
+	p.responseTabs = container.NewAppTabs(
 		container.NewTabItem("Response", responseTabContent),
 		container.NewTabItem("Headers", headersTabContent),
 	)
