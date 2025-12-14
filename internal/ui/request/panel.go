@@ -15,7 +15,20 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// RequestPanel handles request input
+// RequestPanel handles request input.
+//
+// SYNC ARCHITECTURE (to prevent regressions):
+// The Text/Form mode sync uses a single 'syncing' flag to prevent infinite loops.
+// The flow is:
+//   1. User clicks tab OR keyboard shortcut triggers mode change
+//   2. SetOnModeChange callback fires, sets syncing=true
+//   3. state.Mode.Set() updates the binding
+//   4. state.Mode listener fires but returns early (syncing=true)
+//   5. syncModeData() runs to sync form↔text data
+//   6. syncing=false (defer)
+//
+// IMPORTANT: syncModeData() must NOT have its own syncing guard - it runs
+// while syncing=true and that's intentional.
 type RequestPanel struct {
 	widget.BaseWidget
 
@@ -223,15 +236,11 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 	p.Refresh()
 }
 
-// syncModeData synchronizes data when switching between modes
+// syncModeData synchronizes data when switching between modes.
+// NOTE: This function must NOT have its own syncing guard - the caller
+// (SetOnModeChange callback) already sets syncing=true before calling this.
+// Adding a guard here would cause the function to do nothing.
 func (p *RequestPanel) syncModeData(mode string) {
-	// Prevent sync loops
-	if p.syncing {
-		return
-	}
-	p.syncing = true
-	defer func() { p.syncing = false }()
-
 	if mode == "form" {
 		// Switching to form mode: parse text JSON and populate form
 		p.syncTextToForm()
