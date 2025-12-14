@@ -226,11 +226,9 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 			p.formContainer.Objects = []fyne.CanvasObject{formUI}
 			p.formContainer.Refresh()
 
-			// If in form mode, sync existing text to form
-			currentMode, _ := p.state.Mode.Get()
-			if currentMode == "form" {
-				p.syncTextToForm()
-			}
+			// Clear text data when switching methods - old JSON won't match new schema
+			// This prevents crashes from trying to sync incompatible data
+			_ = p.state.TextData.Set("")
 		}
 	}
 	p.Refresh()

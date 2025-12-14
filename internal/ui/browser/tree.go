@@ -100,8 +100,8 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 	label := container.Objects[1].(*widget.Label)
 
 	if branch {
-		// This is a service
-		icon.Resource = theme.FolderIcon()
+		// This is a service - use menu expand icon (chevron style)
+		icon.Resource = theme.MenuExpandIcon()
 		icon.Refresh()
 
 		// Count methods in this service
@@ -173,8 +173,8 @@ func (b *ServiceBrowser) getMethodTypeBadge(method *domain.Method) string {
 
 // onTreeSelected handles tree selection events
 func (b *ServiceBrowser) onTreeSelected(uid string) {
-	// Only handle method selections (leaves)
 	if strings.Contains(uid, ":") {
+		// Method selection (leaf)
 		parts := strings.Split(uid, ":")
 		if len(parts) == 2 {
 			serviceName := parts[0]
@@ -187,6 +187,13 @@ func (b *ServiceBrowser) onTreeSelected(uid string) {
 					b.onMethodSelect(*service, *method)
 				}
 			}
+		}
+	} else {
+		// Service selection (branch) - toggle expand/collapse
+		if b.tree.IsBranchOpen(uid) {
+			b.tree.CloseBranch(uid)
+		} else {
+			b.tree.OpenBranch(uid)
 		}
 	}
 }
