@@ -66,6 +66,9 @@ type MainWindow struct {
 	clientStreamHandle *grpc.ClientStreamHandle
 	bidiStreamHandle   *grpc.BidiStreamHandle
 	bidiCancelFunc     context.CancelFunc
+
+	// Layout mode tracking (avoid unnecessary rebuilds)
+	inBidiMode bool
 }
 
 // NewMainWindow creates a new main window with the application layout.
@@ -866,6 +869,11 @@ func (w *MainWindow) applyWorkspaceState(workspace domain.Workspace) {
 
 // switchToBidiPanel switches the right panel to show the bidi streaming UI
 func (w *MainWindow) switchToBidiPanel() {
+	// Skip if already in bidi mode (avoid expensive layout rebuild)
+	if w.inBidiMode {
+		return
+	}
+
 	// Update the window content to show bidi panel instead of request/response panels
 	leftPanel := container.NewBorder(
 		w.connectionBar,
@@ -890,10 +898,16 @@ func (w *MainWindow) switchToBidiPanel() {
 	mainSplit := container.NewHSplit(leftPanel, rightPanel)
 	mainSplit.SetOffset(0.3)
 	w.window.SetContent(mainSplit)
+	w.inBidiMode = true
 }
 
 // switchToNormalPanel switches back to normal request/response panel layout
 func (w *MainWindow) switchToNormalPanel() {
+	// Skip if already in normal mode (avoid expensive layout rebuild)
+	if !w.inBidiMode {
+		return
+	}
+
 	// Clean up any active bidi stream
 	if w.bidiStreamHandle != nil {
 		if w.bidiCancelFunc != nil {
@@ -905,6 +919,7 @@ func (w *MainWindow) switchToNormalPanel() {
 
 	// Reset to original layout
 	w.SetContent()
+	w.inBidiMode = false
 }
 
 // handleBidiStreamSend sends a message on a bidirectional stream

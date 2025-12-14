@@ -198,6 +198,8 @@ func (b *ServiceBrowser) onTreeSelected(uid string) {
 		} else {
 			b.tree.OpenBranch(uid)
 		}
+		// Unselect so clicking the same service again will trigger OnSelected
+		b.tree.UnselectAll()
 	}
 }
 
