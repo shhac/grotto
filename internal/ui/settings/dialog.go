@@ -14,8 +14,8 @@ func ShowTLSDialog(window fyne.Window, currentSettings domain.TLSSettings, onSav
 	tlsWidget := NewTLSConfig(window)
 	tlsWidget.SetConfig(currentSettings)
 
-	// Create dialog
-	dlg := dialog.NewCustom("TLS Configuration", "Close", tlsWidget.container, window)
+	// Create dialog variable that will be set later
+	var dlg dialog.Dialog
 
 	// Add Save button
 	saveBtn := widget.NewButton("Save", func() {
@@ -35,7 +35,7 @@ func ShowTLSDialog(window fyne.Window, currentSettings domain.TLSSettings, onSav
 
 	content := container.NewBorder(nil, buttons, nil, nil, tlsWidget.container)
 
-	dlg = dialog.NewCustom("TLS Configuration", "", content, window)
+	dlg = dialog.NewCustom("TLS Configuration", "Close", content, window)
 	dlg.Resize(fyne.NewSize(600, 500))
 	dlg.Show()
 }

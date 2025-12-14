@@ -41,12 +41,13 @@ type RequestPanel struct {
 	mainContainer  *fyne.Container       // Container that switches between normal/streaming
 
 	// Metadata
-	metadataKeys binding.StringList // Keys for metadata
-	metadataVals binding.StringList // Values for metadata
-	metadataList *widget.List       // Key-value metadata entries
-	keyEntry     *widget.Entry      // New key entry
-	valEntry     *widget.Entry      // New value entry
-	sendBtn      *widget.Button
+	metadataKeys     binding.StringList // Keys for metadata
+	metadataVals     binding.StringList // Values for metadata
+	metadataList     *widget.List       // Key-value metadata entries
+	keyEntry         *widget.Entry      // New key entry
+	valEntry         *widget.Entry      // New value entry
+	metadataAccordion *widget.Accordion  // Collapsible metadata section
+	sendBtn          *widget.Button
 
 	logger *slog.Logger
 
@@ -377,8 +378,7 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		p.modeTabs,
 	)
 
-	// Metadata section
-	metadataLabel := widget.NewLabel("Metadata:")
+	// Metadata section with collapsible accordion
 	addMetadataBtn := widget.NewButton("+ Add Header", func() {
 		p.addMetadata()
 	})
@@ -392,12 +392,15 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		),
 	)
 
-	metadataBox := container.NewBorder(
-		metadataLabel,
+	metadataContent := container.NewBorder(
+		nil,
 		metadataEntry,
 		nil, nil,
 		p.metadataList,
 	)
+
+	// Create collapsible accordion for metadata (starts collapsed)
+	p.metadataAccordion = components.NewCollapsibleSection("Request Metadata", metadataContent)
 
 	// Send button aligned to right (for unary/server streaming)
 	sendBox := container.NewHBox(
@@ -409,14 +412,14 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 	normalLayout := container.NewVBox(
 		requestBox,
 		widget.NewSeparator(),
-		metadataBox,
+		p.metadataAccordion,
 	)
 
 	// Streaming layout (client streaming)
 	streamingLayout := container.NewVBox(
 		p.streamingInput,
 		widget.NewSeparator(),
-		metadataBox,
+		p.metadataAccordion,
 	)
 
 	// Main container that switches between normal and streaming

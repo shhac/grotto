@@ -5,7 +5,10 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
 )
@@ -81,20 +84,38 @@ func (b *ServiceBrowser) isBranch(uid string) bool {
 
 // create creates a new tree node widget
 func (b *ServiceBrowser) create(branch bool) fyne.CanvasObject {
-	return widget.NewLabel("")
+	icon := canvas.NewImageFromResource(theme.FolderIcon())
+	icon.FillMode = canvas.ImageFillContain
+	icon.SetMinSize(fyne.NewSize(16, 16))
+
+	label := widget.NewLabel("")
+
+	return container.NewHBox(icon, label)
 }
 
 // update updates a tree node widget with the appropriate data
 func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) {
-	label := obj.(*widget.Label)
+	container := obj.(*fyne.Container)
+	icon := container.Objects[0].(*canvas.Image)
+	label := container.Objects[1].(*widget.Label)
 
 	if branch {
 		// This is a service
-		label.SetText(uid)
+		icon.Resource = theme.FolderIcon()
+		icon.Refresh()
+
+		// Count methods in this service
+		service := b.findService(uid)
+		methodCount := 0
+		if service != nil {
+			methodCount = len(service.Methods)
+		}
+
+		label.SetText(fmt.Sprintf("%s  (%d)", uid, methodCount))
 		label.TextStyle = fyne.TextStyle{Bold: true}
 		label.Importance = widget.MediumImportance
 	} else {
-		// This is a method - format as "MethodName (Type)"
+		// This is a method - format with icon and type badge
 		parts := strings.Split(uid, ":")
 		if len(parts) == 2 {
 			methodName := parts[1]
@@ -102,11 +123,51 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 			if service != nil {
 				method := b.findMethod(*service, methodName)
 				if method != nil {
-					label.SetText(fmt.Sprintf("%s (%s)", method.Name, method.MethodType()))
+					// Set icon based on method type
+					icon.Resource = b.getMethodIcon(method)
+					icon.Refresh()
+
+					// Format method name with subtle type badge
+					typeBadge := b.getMethodTypeBadge(method)
+					label.SetText(fmt.Sprintf("%s  %s", method.Name, typeBadge))
+					label.TextStyle = fyne.TextStyle{}
 					label.Importance = widget.LowImportance
 				}
 			}
 		}
+	}
+}
+
+// getMethodIcon returns the appropriate icon for a method type
+func (b *ServiceBrowser) getMethodIcon(method *domain.Method) fyne.Resource {
+	if method.IsClientStream && method.IsServerStream {
+		// Bidi stream - use media replay icon
+		return theme.MediaReplayIcon()
+	} else if method.IsServerStream {
+		// Server stream - use download icon
+		return theme.DownloadIcon()
+	} else if method.IsClientStream {
+		// Client stream - use upload icon
+		return theme.UploadIcon()
+	}
+	// Unary - use navigate next icon
+	return theme.NavigateNextIcon()
+}
+
+// getMethodTypeBadge returns a subtle text badge for the method type
+func (b *ServiceBrowser) getMethodTypeBadge(method *domain.Method) string {
+	methodType := method.MethodType()
+	switch methodType {
+	case "Unary":
+		return ""
+	case "Client Stream":
+		return "↑"
+	case "Server Stream":
+		return "↓"
+	case "Bidi Stream":
+		return "⇅"
+	default:
+		return ""
 	}
 }
 

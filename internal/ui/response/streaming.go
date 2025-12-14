@@ -45,12 +45,13 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 	// Status label
 	w.statusLabel = widget.NewLabel("Ready")
 
-	// Stop button
-	w.stopBtn = widget.NewButton("Stop", func() {
+	// Stop button (styled as danger to make it prominent)
+	w.stopBtn = widget.NewButton("Abort Stream", func() {
 		if w.onStop != nil {
 			w.onStop()
 		}
 	})
+	w.stopBtn.Importance = widget.DangerImportance
 	w.stopBtn.Disable() // Disabled by default until streaming starts
 
 	// Status box (label + stop button)
@@ -81,10 +82,14 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 		},
 	)
 
-	// Main container with status at top
+	// Header for streaming section
+	header := widget.NewLabel("Streaming Messages")
+	header.TextStyle = fyne.TextStyle{Bold: true}
+
+	// Main container with status at top and clear visual hierarchy
 	w.container = container.NewBorder(
 		container.NewVBox(
-			widget.NewLabel("Streaming Messages:"),
+			header,
 			widget.NewSeparator(),
 			w.statusBox,
 			widget.NewSeparator(),

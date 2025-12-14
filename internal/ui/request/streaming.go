@@ -4,7 +4,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -55,7 +54,7 @@ func NewStreamingInputWidget() *StreamingInputWidget {
 		w.handleSend()
 	})
 
-	w.finishBtn = widget.NewButton("Finish & Get Response", func() {
+	w.finishBtn = widget.NewButton("Close Stream", func() {
 		w.handleFinish()
 	})
 	w.finishBtn.Importance = widget.HighImportance
@@ -152,10 +151,9 @@ func (w *StreamingInputWidget) CreateRenderer() fyne.WidgetRenderer {
 		w.messageEntry,
 	)
 
-	// Buttons at bottom
+	// Buttons at bottom - side by side
 	buttonBox := container.NewHBox(
 		w.sendBtn,
-		layout.NewSpacer(),
 		w.finishBtn,
 	)
 

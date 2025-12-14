@@ -19,9 +19,10 @@ type ResponsePanel struct {
 	loadingBar    *widget.ProgressBarInfinite
 
 	// Response metadata display
-	metadataKeys binding.StringList
-	metadataVals binding.StringList
-	metadataList *widget.List
+	metadataKeys      binding.StringList
+	metadataVals      binding.StringList
+	metadataList      *widget.List
+	metadataAccordion *widget.Accordion
 
 	// Streaming widget
 	streamingWidget *StreamingMessagesWidget
@@ -95,14 +96,15 @@ func (p *ResponsePanel) initializeComponents() {
 	// Streaming widget
 	p.streamingWidget = NewStreamingMessagesWidget()
 
-	// Metadata section
-	metadataHeader := widget.NewLabel("Response Headers:")
-	metadataHeader.TextStyle = fyne.TextStyle{Bold: true}
-	metadataSection := container.NewBorder(
-		metadataHeader,
-		nil, nil, nil,
-		container.NewMax(p.metadataList),
+	// Metadata section with collapsible accordion
+	metadataContent := container.NewMax(p.metadataList)
+
+	// Import components package for collapsible section
+	// Create collapsible accordion for response headers (starts collapsed)
+	p.metadataAccordion = widget.NewAccordion(
+		widget.NewAccordionItem("Response Headers", metadataContent),
 	)
+	p.metadataAccordion.Close(0) // Start collapsed to save space
 
 	// Create content containers
 	p.responseContent = container.NewBorder(
@@ -111,7 +113,7 @@ func (p *ResponsePanel) initializeComponents() {
 			widget.NewSeparator(),
 			p.durationLabel,
 			widget.NewSeparator(),
-			metadataSection,
+			p.metadataAccordion,
 		),
 		nil,
 		nil,
@@ -229,6 +231,11 @@ func (p *ResponsePanel) SetResponseMetadata(md map[string]string) {
 	}
 
 	p.metadataList.Refresh()
+
+	// Auto-expand the accordion if there are headers to show
+	if len(md) > 0 && p.metadataAccordion != nil {
+		p.metadataAccordion.Open(0)
+	}
 }
 
 // ClearResponse clears all response data (for keyboard shortcut)
