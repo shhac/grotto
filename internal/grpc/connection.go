@@ -150,10 +150,13 @@ func (m *ConnectionManager) Connect(ctx context.Context, cfg domain.Connection) 
 // Disconnect closes the gRPC connection
 func (m *ConnectionManager) Disconnect() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.conn == nil {
-		m.updateState(StateDisconnected, "Already disconnected")
+		cb := m.updateStateLocked(StateDisconnected, "Already disconnected")
+		m.mu.Unlock()
+		if cb != nil {
+			cb(StateDisconnected, "Already disconnected")
+		}
 		return nil
 	}
 
@@ -164,14 +167,23 @@ func (m *ConnectionManager) Disconnect() error {
 			slog.String("address", addr),
 			slog.Any("error", err),
 		)
-		m.updateState(StateError, "Failed to disconnect: "+err.Error())
+		msg := "Failed to disconnect: " + err.Error()
+		cb := m.updateStateLocked(StateError, msg)
+		m.mu.Unlock()
+		if cb != nil {
+			cb(StateError, msg)
+		}
 		return err
 	}
 
 	m.conn = nil
 	m.address = ""
 	m.logger.Info("gRPC connection closed", slog.String("address", addr))
-	m.updateState(StateDisconnected, "Disconnected")
+	cb := m.updateStateLocked(StateDisconnected, "Disconnected")
+	m.mu.Unlock()
+	if cb != nil {
+		cb(StateDisconnected, "Disconnected")
+	}
 
 	return nil
 }
@@ -205,7 +217,8 @@ func (m *ConnectionManager) SetStateCallback(fn func(state ConnectionState, mess
 	m.onStateChange = fn
 }
 
-// updateState updates the connection state and invokes the callback if set
+// updateState updates the connection state and invokes the callback if set.
+// The caller must NOT hold m.mu.
 func (m *ConnectionManager) updateState(state ConnectionState, message string) {
 	m.mu.Lock()
 	m.state = state
@@ -220,6 +233,17 @@ func (m *ConnectionManager) updateState(state ConnectionState, message string) {
 	if callback != nil {
 		callback(state, message)
 	}
+}
+
+// updateStateLocked updates the connection state while m.mu is already held.
+// Returns the callback (if any) for the caller to invoke AFTER releasing the lock.
+func (m *ConnectionManager) updateStateLocked(state ConnectionState, message string) func(ConnectionState, string) {
+	m.state = state
+	m.logger.Debug("connection state changed",
+		slog.String("state", state.String()),
+		slog.String("message", message),
+	)
+	return m.onStateChange
 }
 
 // buildTLSConfig creates a TLS configuration from TLSSettings
