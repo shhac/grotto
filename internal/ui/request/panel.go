@@ -159,10 +159,11 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 	p.valEntry = widget.NewEntry()
 	p.valEntry.SetPlaceHolder("Header value")
 
-	// Send button
+	// Send button (disabled until a method is selected)
 	p.sendBtn = widget.NewButton("Send", func() {
 		p.handleSend()
 	})
+	p.sendBtn.Disable()
 
 	// Streaming input widget
 	p.streamingInput = NewStreamingInputWidget()
@@ -175,6 +176,15 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 
 	p.ExtendBaseWidget(p)
 	return p
+}
+
+// SetSendEnabled enables or disables the Send button
+func (p *RequestPanel) SetSendEnabled(enabled bool) {
+	if enabled {
+		p.sendBtn.Enable()
+	} else {
+		p.sendBtn.Disable()
+	}
 }
 
 // SetOnSend sets the callback for when Send is clicked (unary/server streaming)

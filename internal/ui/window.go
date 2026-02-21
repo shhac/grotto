@@ -171,10 +171,9 @@ func (w *MainWindow) wireCallbacks() {
 	})
 
 	// History replay
-	// TODO: Implement handleHistoryReplay method
-	// w.historyPanel.SetOnReplay(func(entry domain.HistoryEntry) {
-	// 	w.handleHistoryReplay(entry)
-	// })
+	w.historyPanel.SetOnReplay(func(entry domain.HistoryEntry) {
+		w.handleHistoryReplay(entry)
+	})
 }
 
 // handleConnect establishes a connection and lists services
@@ -324,6 +323,7 @@ func (w *MainWindow) handleDisconnect() {
 		_ = w.state.CurrentServer.Set("")
 		_ = w.state.SelectedService.Set("")
 		_ = w.state.SelectedMethod.Set("")
+		w.requestPanel.SetSendEnabled(false)
 
 		// Update connection state to reflect disconnection
 		_ = w.connState.State.Set("disconnected")
@@ -407,6 +407,7 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 
 		// Update request panel with method descriptor
 		w.requestPanel.SetMethod(method.Name, protoDesc)
+		w.requestPanel.SetSendEnabled(true)
 
 		// Set client streaming mode based on method type
 		w.requestPanel.SetClientStreaming(method.IsClientStream)
@@ -503,9 +504,8 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		_ = w.state.Response.Loading.Set(false)
 
 		// Record history entry
-		// TODO: Implement recordHistoryEntry method
-		// currentServer, _ := w.state.CurrentServer.Get()
-		// w.recordHistoryEntry(currentServer, serviceName+"/"+methodName, jsonStr, metadataMap, respJSON, respHeaders, duration, err)
+		currentServer, _ := w.state.CurrentServer.Get()
+		w.recordHistoryEntry(currentServer, serviceName+"/"+methodName, jsonStr, metadataMap, respJSON, respHeaders, duration, err)
 
 		if err != nil {
 			w.logger.Error("RPC invocation failed", slog.Any("error", err))
@@ -685,15 +685,19 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 //	└─────────────────┴──────────────────────────────┘
 // buildLeftPanel constructs the left panel with connection bar, service browser, and workspace.
 func (w *MainWindow) buildLeftPanel() *fyne.Container {
-	browserWithWorkspace := container.NewVSplit(
-		w.serviceBrowser,
-		w.workspacePanel,
+	leftTabs := container.NewAppTabs(
+		container.NewTabItem("Workspaces", w.workspacePanel),
+		container.NewTabItem("History", w.historyPanel),
 	)
-	browserWithWorkspace.SetOffset(0.7)
+	browserWithTabs := container.NewVSplit(
+		w.serviceBrowser,
+		leftTabs,
+	)
+	browserWithTabs.SetOffset(0.7)
 	return container.NewBorder(
 		w.connectionBar,
 		nil, nil, nil,
-		browserWithWorkspace,
+		browserWithTabs,
 	)
 }
 

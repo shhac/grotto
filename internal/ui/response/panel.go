@@ -53,7 +53,8 @@ func (p *ResponsePanel) initializeComponents() {
 	// Response text display (read-only multiline entry)
 	p.textDisplay = widget.NewMultiLineEntry()
 	p.textDisplay.Wrapping = fyne.TextWrapWord
-	// Note: Not disabling to maintain proper text contrast - user can still select/copy
+	p.textDisplay.SetPlaceHolder("Send a request to see the response")
+	p.textDisplay.Disable()
 
 	// Duration label
 	p.durationLabel = widget.NewLabel("")

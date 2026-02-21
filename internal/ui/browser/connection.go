@@ -39,6 +39,9 @@ func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window) *Conne
 
 	c.addressEntry = widget.NewEntry()
 	c.addressEntry.SetPlaceHolder("localhost:50051")
+	c.addressEntry.OnSubmitted = func(s string) {
+		c.handleButtonClick()
+	}
 
 	c.connectBtn = widget.NewButton("Connect", func() {
 		c.handleButtonClick()

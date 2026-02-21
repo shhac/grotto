@@ -20,6 +20,8 @@ type ServiceBrowser struct {
 	tree          *widget.Tree
 	themedTree    fyne.CanvasObject // tree wrapped with custom theme
 	services      binding.UntypedList // []domain.Service
+	placeholder   *widget.Label       // shown when no services loaded
+	content       *fyne.Container     // stack switching between placeholder and tree
 
 	// O(1) service lookup index, rebuilt when services binding changes
 	serviceIndex map[string]domain.Service
@@ -55,6 +57,15 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	customTheme := newTreeTheme(theme.DefaultTheme())
 	b.themedTree = container.NewThemeOverride(b.tree, customTheme)
 
+	// Empty state placeholder
+	b.placeholder = widget.NewLabel("Enter a server address and click Connect to get started")
+	b.placeholder.Alignment = fyne.TextAlignCenter
+	b.placeholder.Wrapping = fyne.TextWrapWord
+	b.placeholder.TextStyle = fyne.TextStyle{Italic: true}
+
+	// Stack container: shows placeholder when empty, tree when populated
+	b.content = container.NewStack(container.NewCenter(b.placeholder))
+
 	b.ExtendBaseWidget(b)
 	return b
 }
@@ -71,8 +82,7 @@ func (b *ServiceBrowser) Refresh() {
 
 // CreateRenderer creates the renderer for this widget
 func (b *ServiceBrowser) CreateRenderer() fyne.WidgetRenderer {
-	// Return the themed container instead of the raw tree
-	return widget.NewSimpleRenderer(b.themedTree)
+	return widget.NewSimpleRenderer(b.content)
 }
 
 // childUIDs returns the child UIDs for a given parent UID
@@ -240,6 +250,17 @@ func (b *ServiceBrowser) rebuildIndex() {
 	}
 	b.serviceIndex = index
 	b.serviceUIDs = uids
+
+	// Toggle between placeholder and tree based on service count
+	// (content may be nil during initial construction)
+	if b.content != nil {
+		if len(uids) == 0 {
+			b.content.Objects = []fyne.CanvasObject{container.NewCenter(b.placeholder)}
+		} else {
+			b.content.Objects = []fyne.CanvasObject{b.themedTree}
+		}
+		b.content.Refresh()
+	}
 }
 
 // getServiceUIDs returns the UIDs of all services
