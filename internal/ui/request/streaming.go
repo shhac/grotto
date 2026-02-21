@@ -7,6 +7,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+const (
+	maxStreamMessages = 1000
+	evictionBatch     = 200
+)
+
 // StreamingInputWidget provides UI for client streaming RPCs.
 // It allows sending multiple messages and then finishing the stream to get a response.
 type StreamingInputWidget struct {
@@ -90,6 +95,14 @@ func (w *StreamingInputWidget) handleSend() {
 	// Add to sent messages list
 	_ = w.sentMessages.Append(msg)
 
+	// Evict oldest if over cap
+	if count := w.sentMessages.Length(); count > maxStreamMessages {
+		all, err := w.sentMessages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = w.sentMessages.Set(all[evictionBatch:])
+		}
+	}
+
 	// Clear the entry for next message
 	w.messageEntry.SetText("")
 
@@ -109,6 +122,14 @@ func (w *StreamingInputWidget) handleFinish() {
 // AddSent adds a sent message to the list (for programmatic use).
 func (w *StreamingInputWidget) AddSent(json string) {
 	_ = w.sentMessages.Append(json)
+
+	if count := w.sentMessages.Length(); count > maxStreamMessages {
+		all, err := w.sentMessages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = w.sentMessages.Set(all[evictionBatch:])
+		}
+	}
+
 	w.sentList.Refresh()
 }
 

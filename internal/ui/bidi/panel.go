@@ -10,6 +10,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+const (
+	maxStreamMessages = 1000
+	evictionBatch     = 200
+)
+
 // BidiStreamPanel provides UI for bidirectional streaming RPCs.
 // It displays sent and received messages in a split view, allowing the user
 // to send multiple messages while simultaneously receiving responses.
@@ -27,6 +32,10 @@ type BidiStreamPanel struct {
 	// Receive side (right)
 	receivedList     *widget.List        // List of received messages
 	receivedMessages binding.UntypedList // Binding for received messages
+
+	// Counters (including evicted messages)
+	totalSent     int
+	totalReceived int
 
 	// Status
 	statusLabel *widget.Label
@@ -199,6 +208,15 @@ func (p *BidiStreamPanel) handleSend() {
 
 	// Add to sent messages list
 	_ = p.sentMessages.Append(msg)
+	p.totalSent++
+
+	// Evict oldest if over cap
+	if count := p.sentMessages.Length(); count > maxStreamMessages {
+		all, err := p.sentMessages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = p.sentMessages.Set(all[evictionBatch:])
+		}
+	}
 
 	// Clear the entry for next message
 	p.messageEntry.SetText("")
@@ -230,6 +248,15 @@ func (p *BidiStreamPanel) handleCloseSend() {
 // AddSent adds a sent message to the list (for programmatic use).
 func (p *BidiStreamPanel) AddSent(json string) {
 	_ = p.sentMessages.Append(json)
+	p.totalSent++
+
+	if count := p.sentMessages.Length(); count > maxStreamMessages {
+		all, err := p.sentMessages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = p.sentMessages.Set(all[evictionBatch:])
+		}
+	}
+
 	p.sentList.Refresh()
 	p.updateStatus()
 }
@@ -237,6 +264,16 @@ func (p *BidiStreamPanel) AddSent(json string) {
 // AddReceived adds a received message to the list (thread-safe via bindings).
 func (p *BidiStreamPanel) AddReceived(json string) {
 	p.receivedMessages.Append(json)
+	p.totalReceived++
+
+	// Evict oldest if over cap
+	if count := p.receivedMessages.Length(); count > maxStreamMessages {
+		all, err := p.receivedMessages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = p.receivedMessages.Set(all[evictionBatch:])
+		}
+	}
+
 	p.receivedList.Refresh()
 
 	// Auto-scroll to latest message
@@ -253,9 +290,19 @@ func (p *BidiStreamPanel) SetStatus(status string) {
 
 // updateStatus updates the status with message counts.
 func (p *BidiStreamPanel) updateStatus() {
-	sentCount := p.sentMessages.Length()
-	receivedCount := p.receivedMessages.Length()
-	p.statusLabel.SetText(fmt.Sprintf("Sent: %d | Received: %d", sentCount, receivedCount))
+	sentVisible := p.sentMessages.Length()
+	recvVisible := p.receivedMessages.Length()
+
+	sentStr := fmt.Sprintf("%d", sentVisible)
+	if p.totalSent > sentVisible {
+		sentStr = fmt.Sprintf("%d of %d", sentVisible, p.totalSent)
+	}
+	recvStr := fmt.Sprintf("%d", recvVisible)
+	if p.totalReceived > recvVisible {
+		recvStr = fmt.Sprintf("%d of %d", recvVisible, p.totalReceived)
+	}
+
+	p.statusLabel.SetText(fmt.Sprintf("Sent: %s | Received: %s", sentStr, recvStr))
 }
 
 // Clear resets the panel for a new stream.
@@ -264,9 +311,11 @@ func (p *BidiStreamPanel) Clear() {
 	p.messageEntry.Enable()
 
 	_ = p.sentMessages.Set([]string{})
+	p.totalSent = 0
 	p.sentList.Refresh()
 
 	_ = p.receivedMessages.Set([]interface{}{})
+	p.totalReceived = 0
 	p.receivedList.Refresh()
 
 	p.sendBtn.Enable()

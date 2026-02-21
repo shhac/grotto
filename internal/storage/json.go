@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/shhac/grotto/internal/domain"
 )
@@ -36,17 +37,23 @@ func NewJSONRepository(basePath string, logger *slog.Logger) *JSONRepository {
 
 // SaveWorkspace saves a workspace to a JSON file
 func (r *JSONRepository) SaveWorkspace(workspace domain.Workspace) error {
+	if err := validateWorkspaceName(workspace.Name); err != nil {
+		return fmt.Errorf("invalid workspace name: %w", err)
+	}
 	if err := r.ensureWorkspacesDir(); err != nil {
 		return fmt.Errorf("ensure workspaces directory: %w", err)
 	}
 
 	path := r.workspacePath(workspace.Name)
+	if err := r.verifyPathInWorkspacesDir(path); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(workspace, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal workspace: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, filePermission); err != nil {
+	if err := atomicWriteFile(path, data, filePermission); err != nil {
 		return fmt.Errorf("write workspace file: %w", err)
 	}
 
@@ -59,7 +66,13 @@ func (r *JSONRepository) SaveWorkspace(workspace domain.Workspace) error {
 
 // LoadWorkspace loads a workspace from a JSON file
 func (r *JSONRepository) LoadWorkspace(name string) (*domain.Workspace, error) {
+	if err := validateWorkspaceName(name); err != nil {
+		return nil, fmt.Errorf("invalid workspace name: %w", err)
+	}
 	path := r.workspacePath(name)
+	if err := r.verifyPathInWorkspacesDir(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -113,7 +126,13 @@ func (r *JSONRepository) ListWorkspaces() ([]string, error) {
 
 // DeleteWorkspace removes a workspace file
 func (r *JSONRepository) DeleteWorkspace(name string) error {
+	if err := validateWorkspaceName(name); err != nil {
+		return fmt.Errorf("invalid workspace name: %w", err)
+	}
 	path := r.workspacePath(name)
+	if err := r.verifyPathInWorkspacesDir(path); err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("workspace %q not found", name)
@@ -186,6 +205,63 @@ func (r *JSONRepository) ClearRecentConnections() error {
 	return nil
 }
 
+// atomicWriteFile writes data to a file atomically by writing to a temp file
+// in the same directory, syncing, then renaming over the target path.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := f.Name()
+
+	// Clean up temp file on any failure
+	success := false
+	defer func() {
+		if !success {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+
+	success = true
+	return nil
+}
+
+// validateWorkspaceName checks that a workspace name is safe for use as a filename.
+func validateWorkspaceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("workspace name must not be empty")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("workspace name must not contain %q", "..")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("workspace name must not contain path separators")
+	}
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("workspace name must not contain null bytes")
+	}
+	return nil
+}
+
 // Helper methods
 
 func (r *JSONRepository) ensureBaseDir() error {
@@ -205,6 +281,20 @@ func (r *JSONRepository) ensureWorkspacesDir() error {
 
 func (r *JSONRepository) workspacePath(name string) string {
 	return filepath.Join(r.basePath, workspacesDir, name+".json")
+}
+
+// verifyPathInWorkspacesDir checks that the resolved path is within the workspaces directory.
+// This is a defense-in-depth check complementing validateWorkspaceName.
+func (r *JSONRepository) verifyPathInWorkspacesDir(path string) error {
+	workspacesBase := filepath.Join(r.basePath, workspacesDir)
+	rel, err := filepath.Rel(workspacesBase, path)
+	if err != nil {
+		return fmt.Errorf("path outside workspaces directory: %w", err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path %q escapes workspaces directory", path)
+	}
+	return nil
 }
 
 func (r *JSONRepository) recentPath() string {
@@ -237,7 +327,7 @@ func (r *JSONRepository) saveRecentList(recent []domain.Connection) error {
 	}
 
 	path := r.recentPath()
-	if err := os.WriteFile(path, data, filePermission); err != nil {
+	if err := atomicWriteFile(path, data, filePermission); err != nil {
 		return fmt.Errorf("write recent file: %w", err)
 	}
 
@@ -348,7 +438,7 @@ func (r *JSONRepository) saveHistoryList(history []domain.HistoryEntry) error {
 	}
 
 	path := r.historyPath()
-	if err := os.WriteFile(path, data, filePermission); err != nil {
+	if err := atomicWriteFile(path, data, filePermission); err != nil {
 		return fmt.Errorf("write history file: %w", err)
 	}
 

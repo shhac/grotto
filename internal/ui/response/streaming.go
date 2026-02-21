@@ -9,13 +9,19 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+const (
+	maxStreamMessages = 1000
+	evictionBatch     = 200
+)
+
 // StreamingMessagesWidget displays streaming RPC messages as they arrive.
 type StreamingMessagesWidget struct {
 	widget.BaseWidget
 
-	messages    binding.UntypedList // []string (JSON messages)
-	messageList *widget.List
-	autoScroll  bool
+	messages      binding.UntypedList // []string (JSON messages)
+	messageList   *widget.List
+	autoScroll    bool
+	totalReceived int // total messages received (including evicted)
 
 	// Status section
 	statusLabel *widget.Label
@@ -104,16 +110,28 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 // AddMessage appends a message to the list (thread-safe).
 // This should be called from a goroutine using fyne.Do() wrapper.
 func (w *StreamingMessagesWidget) AddMessage(jsonStr string) {
-	// Append to messages list
 	w.messages.Append(jsonStr)
+	w.totalReceived++
+
+	// Evict oldest messages if over cap
+	count := w.messages.Length()
+	if count > maxStreamMessages {
+		all, err := w.messages.Get()
+		if err == nil && len(all) > maxStreamMessages {
+			_ = w.messages.Set(all[evictionBatch:])
+			count = w.messages.Length()
+		}
+	}
 
 	// Update status
-	count := w.messages.Length()
-	w.statusLabel.SetText(fmt.Sprintf("Streaming... (%d messages)", count))
+	if w.totalReceived > count {
+		w.statusLabel.SetText(fmt.Sprintf("Streaming... (showing %d of %d messages)", count, w.totalReceived))
+	} else {
+		w.statusLabel.SetText(fmt.Sprintf("Streaming... (%d messages)", count))
+	}
 
 	// Auto-scroll to latest message if enabled
 	if w.autoScroll {
-		// Scroll to the latest item
 		w.messageList.ScrollToBottom()
 	}
 }
@@ -126,6 +144,7 @@ func (w *StreamingMessagesWidget) SetStatus(status string) {
 // Clear removes all messages from the list.
 func (w *StreamingMessagesWidget) Clear() {
 	_ = w.messages.Set([]interface{}{})
+	w.totalReceived = 0
 	w.messageList.Refresh()
 	w.statusLabel.SetText("Ready")
 }

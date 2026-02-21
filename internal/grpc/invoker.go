@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/dynamic"
@@ -12,6 +13,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
+
+const maxLogBodyLen = 512
+
+// truncateForLog truncates a string for logging, appending a size indicator if truncated.
+func truncateForLog(s string) string {
+	if len(s) <= maxLogBodyLen {
+		return s
+	}
+	return s[:maxLogBodyLen] + "... (" + strconv.Itoa(len(s)) + " bytes total)"
+}
 
 // Invoker handles dynamic gRPC invocations using reflection-based message types.
 // It supports unary and streaming RPC patterns without requiring generated code.
@@ -50,7 +61,7 @@ func (i *Invoker) InvokeUnary(
 	methodName := methodDesc.GetFullyQualifiedName()
 	i.logger.Debug("invoking unary RPC",
 		slog.String("method", methodName),
-		slog.String("request", jsonRequest),
+		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message from method descriptor
@@ -98,7 +109,7 @@ func (i *Invoker) InvokeUnary(
 
 	i.logger.Debug("unary RPC completed",
 		slog.String("method", methodName),
-		slog.String("response", string(jsonBytes)),
+		slog.String("response", truncateForLog(string(jsonBytes))),
 	)
 
 	return string(jsonBytes), respHeaders, nil
@@ -129,7 +140,7 @@ func (i *Invoker) InvokeServerStream(
 	methodName := methodDesc.GetFullyQualifiedName()
 	i.logger.Debug("invoking server streaming RPC",
 		slog.String("method", methodName),
-		slog.String("request", jsonRequest),
+		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	go func() {
@@ -235,7 +246,7 @@ func (h *ClientStreamHandle) Send(jsonRequest string) error {
 	methodName := h.methodDesc.GetFullyQualifiedName()
 	h.logger.Debug("sending client stream message",
 		slog.String("method", methodName),
-		slog.String("request", jsonRequest),
+		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message
@@ -296,7 +307,7 @@ func (h *ClientStreamHandle) CloseAndReceive() (string, error) {
 
 	h.logger.Debug("client stream completed",
 		slog.String("method", methodName),
-		slog.String("response", string(jsonBytes)),
+		slog.String("response", truncateForLog(string(jsonBytes))),
 	)
 
 	return string(jsonBytes), nil
@@ -373,7 +384,7 @@ func (h *BidiStreamHandle) Send(jsonRequest string) error {
 	methodName := h.methodDesc.GetFullyQualifiedName()
 	h.logger.Debug("sending bidi stream message",
 		slog.String("method", methodName),
-		slog.String("request", jsonRequest),
+		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message
