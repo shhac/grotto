@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -50,13 +51,17 @@ func NewMapFieldWidget(name string, fd protoreflect.FieldDescriptor) *MapFieldWi
 		}
 	})
 
+	// Create scroll container with minimum size for proper layout
+	scroll := container.NewVScroll(m.listBox)
+	scroll.SetMinSize(fyne.NewSize(0, 100)) // Ensure scroll area has minimum height
+
 	// Main container with label, list, and add button
 	m.container = container.NewBorder(
 		widget.NewLabel(name+":"),
 		m.addButton,
 		nil,
 		nil,
-		container.NewVScroll(m.listBox),
+		scroll,
 	)
 
 	m.ExtendBaseWidget(m)
@@ -70,34 +75,50 @@ func (m *MapFieldWidget) CreateRenderer() fyne.WidgetRenderer {
 
 // AddEntry adds a new key-value pair to the map
 func (m *MapFieldWidget) AddEntry() {
-	index := len(m.items)
-
 	// Create key widget
 	keyWidget := m.createKeyWidget()
 
 	// Create value widget
 	valueWidget := m.createValueWidget()
 
-	// Create remove button
-	removeBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		m.RemoveEntry(index)
-		if m.onRemove != nil {
-			m.onRemove(index)
-		}
-	})
-
-	// Create row with key, value, and remove button
-	// Layout: [Key Entry] [Value Entry] [Remove Button]
+	// Create row container first (before remove button callback)
 	row := container.NewBorder(
 		nil,
 		nil,
 		nil,
-		removeBtn,
+		nil, // Will set remove button after
 		container.NewGridWithColumns(2,
 			keyWidget,
 			valueWidget,
 		),
 	)
+
+	// Create remove button with dynamic index lookup
+	// Instead of capturing the index at creation time, find the row's current index when clicked
+	removeBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		// Find the current index of this row
+		currentIndex := -1
+		for i, item := range m.items {
+			if item == row {
+				currentIndex = i
+				break
+			}
+		}
+		if currentIndex >= 0 {
+			m.RemoveEntry(currentIndex)
+			if m.onRemove != nil {
+				m.onRemove(currentIndex)
+			}
+		}
+	})
+
+	// Update the row to include the remove button
+	row.Objects = []fyne.CanvasObject{
+		container.NewGridWithColumns(2, keyWidget, valueWidget),
+		removeBtn,
+	}
+	row.Layout = layout.NewBorderLayout(nil, nil, nil, removeBtn)
+	row.Refresh()
 
 	m.items = append(m.items, row)
 	m.listBox.Add(row)

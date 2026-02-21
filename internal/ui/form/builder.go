@@ -475,7 +475,8 @@ func valueToInterface(fd protoreflect.FieldDescriptor, v protoreflect.Value) int
 		list := v.List()
 		result := make([]interface{}, list.Len())
 		for i := 0; i < list.Len(); i++ {
-			result[i] = valueToInterface(fd, list.Get(i))
+			// Use scalarValueToInterface for list elements to avoid recursive IsList() check
+			result[i] = scalarValueToInterface(fd, list.Get(i))
 		}
 		return result
 	}
@@ -489,13 +490,22 @@ func valueToInterface(fd protoreflect.FieldDescriptor, v protoreflect.Value) int
 		mapVal.Range(func(k protoreflect.MapKey, v protoreflect.Value) bool {
 			// Convert map key to string (for UI purposes)
 			keyStr := mapKeyToString(k, keyDesc)
-			// Convert value
-			result[keyStr] = valueToInterface(valueDesc, v)
+			// Convert value using scalar converter (map values are never lists themselves)
+			result[keyStr] = scalarValueToInterface(valueDesc, v)
 			return true
 		})
 		return result
 	}
 
+	// For non-list, non-map fields, use scalar converter
+	return scalarValueToInterface(fd, v)
+}
+
+// scalarValueToInterface converts a single protoreflect.Value to a Go interface{}
+// This is used for list elements, map values, and regular scalar fields.
+// It does NOT check IsList() or IsMap() since those are field-level properties,
+// not value-level properties.
+func scalarValueToInterface(fd protoreflect.FieldDescriptor, v protoreflect.Value) interface{} {
 	switch fd.Kind() {
 	case protoreflect.BoolKind:
 		return v.Bool()

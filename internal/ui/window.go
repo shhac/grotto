@@ -171,7 +171,7 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 	go func() {
 		ctx := context.Background()
 
-		// Update UI state
+		// Update UI state (bindings are thread-safe)
 		_ = w.connState.State.Set("connecting")
 		_ = w.connState.Message.Set("Connecting to " + address)
 
@@ -187,10 +187,12 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to connect: " + err.Error())
 
-			// Show rich gRPC error dialog with retry option
-			uierrors.ShowGRPCError(err, w.window, func() {
-				// Retry callback - attempt connection again
-				w.handleConnect(address, tlsSettings)
+			// Show rich gRPC error dialog with retry option (must be on main thread)
+			fyne.Do(func() {
+				uierrors.ShowGRPCError(err, w.window, func() {
+					// Retry callback - attempt connection again
+					w.handleConnect(address, tlsSettings)
+				})
 			})
 			return
 		}
@@ -201,10 +203,12 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to initialize reflection: " + err.Error())
 
-			// Show rich gRPC error dialog with retry option
-			uierrors.ShowGRPCError(err, w.window, func() {
-				// Retry callback - attempt connection again
-				w.handleConnect(address, tlsSettings)
+			// Show rich gRPC error dialog with retry option (must be on main thread)
+			fyne.Do(func() {
+				uierrors.ShowGRPCError(err, w.window, func() {
+					// Retry callback - attempt connection again
+					w.handleConnect(address, tlsSettings)
+				})
 			})
 			return
 		}
@@ -216,22 +220,24 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			_ = w.connState.State.Set("error")
 			_ = w.connState.Message.Set("Failed to list services: " + err.Error())
 
-			// Show rich gRPC error dialog with retry option
-			uierrors.ShowGRPCError(err, w.window, func() {
-				// Retry callback - attempt connection again
-				w.handleConnect(address, tlsSettings)
+			// Show rich gRPC error dialog with retry option (must be on main thread)
+			fyne.Do(func() {
+				uierrors.ShowGRPCError(err, w.window, func() {
+					// Retry callback - attempt connection again
+					w.handleConnect(address, tlsSettings)
+				})
 			})
 			return
 		}
 
-		// Update state with services
+		// Update state with services (bindings are thread-safe)
 		servicesInterface := make([]interface{}, len(services))
 		for i, svc := range services {
 			servicesInterface[i] = svc
 		}
 		_ = w.state.Services.Set(servicesInterface)
 
-		// Update connection state
+		// Update connection state (bindings are thread-safe)
 		_ = w.state.CurrentServer.Set(address)
 		_ = w.state.Connected.Set(true)
 		_ = w.connState.State.Set("connected")
@@ -242,8 +248,10 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			slog.Int("service_count", len(services)),
 		)
 
-		// Refresh the service browser
-		w.serviceBrowser.Refresh()
+		// Refresh the service browser (must be on main thread in Fyne 2.6+)
+		fyne.Do(func() {
+			w.serviceBrowser.Refresh()
+		})
 	}()
 }
 
@@ -256,11 +264,13 @@ func (w *MainWindow) handleDisconnect() {
 		// Disconnect
 		if err := w.app.ConnManager().Disconnect(); err != nil {
 			w.logger.Error("disconnect failed", slog.Any("error", err))
-			dialog.ShowError(err, w.window)
+			fyne.Do(func() {
+				dialog.ShowError(err, w.window)
+			})
 			return
 		}
 
-		// Clear UI state
+		// Clear UI state (bindings are thread-safe)
 		_ = w.state.Services.Set([]interface{}{})
 		_ = w.state.Connected.Set(false)
 		_ = w.state.CurrentServer.Set("")
@@ -271,8 +281,10 @@ func (w *MainWindow) handleDisconnect() {
 		_ = w.connState.State.Set("disconnected")
 		_ = w.connState.Message.Set("Disconnected")
 
-		// Refresh the service browser to clear the tree
-		w.serviceBrowser.Refresh()
+		// Refresh the service browser to clear the tree (must be on main thread)
+		fyne.Do(func() {
+			w.serviceBrowser.Refresh()
+		})
 
 		w.logger.Info("disconnected")
 	}()
@@ -403,7 +415,9 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		// Set loading state and switch to normal response mode
 		_ = w.state.Response.Loading.Set(true)
 		_ = w.state.Response.Error.Set("")
-		w.responsePanel.SetStreaming(false)
+		fyne.Do(func() {
+			w.responsePanel.SetStreaming(false)
+		})
 
 		startTime := time.Now()
 
@@ -431,15 +445,17 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		if err != nil {
 			w.logger.Error("RPC invocation failed", slog.Any("error", err))
 
-			// Show rich gRPC error dialog with retry option
-			uierrors.ShowGRPCError(err, w.window, func() {
-				// Retry callback - send the request again
-				w.handleSendRequest(jsonStr, metadataMap)
+			// Show rich gRPC error dialog with retry option (must be on main thread)
+			fyne.Do(func() {
+				uierrors.ShowGRPCError(err, w.window, func() {
+					// Retry callback - send the request again
+					w.handleSendRequest(jsonStr, metadataMap)
+				})
+				w.responsePanel.ClearResponseMetadata()
 			})
 
 			// Also set error in response panel for inline visibility
 			_ = w.state.Response.Error.Set(err.Error())
-			w.responsePanel.ClearResponseMetadata()
 			return
 		}
 
@@ -451,24 +467,26 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		}
 
 		// Convert metadata.MD to map[string]string for display
-		metadataMap := make(map[string]string)
+		respMetadataMap := make(map[string]string)
 		for key, values := range respHeaders {
 			if len(values) > 0 {
 				// Join multiple values with comma
-				metadataMap[key] = values[0]
+				respMetadataMap[key] = values[0]
 				if len(values) > 1 {
 					for i := 1; i < len(values); i++ {
-						metadataMap[key] += ", " + values[i]
+						respMetadataMap[key] += ", " + values[i]
 					}
 				}
 			}
 		}
 
-		// Update response
+		// Update response (bindings are thread-safe, but widget methods need main thread)
 		_ = w.state.Response.TextData.Set(respJSON)
 		_ = w.state.Response.Duration.Set(fmt.Sprintf("Duration: %v", duration.Round(time.Millisecond)))
 		_ = w.state.Response.Error.Set("")
-		w.responsePanel.SetResponseMetadata(metadataMap)
+		fyne.Do(func() {
+			w.responsePanel.SetResponseMetadata(respMetadataMap)
+		})
 
 		w.logger.Info("RPC completed successfully",
 			slog.String("method", methodName),
@@ -539,8 +557,10 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 					jsonMsg = string(prettyBytes)
 				}
 
-				// Add message to UI (bindings are thread-safe)
-				streamWidget.AddMessage(jsonMsg)
+				// Add message to UI (must be on main thread)
+				fyne.Do(func() {
+					streamWidget.AddMessage(jsonMsg)
+				})
 
 			case err, ok := <-errChan:
 				if !ok {
@@ -558,8 +578,10 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 						slog.Duration("duration", duration),
 					)
 
-					streamWidget.SetStatus(fmt.Sprintf("Complete (%d messages in %v)", messageCount, duration.Round(time.Millisecond)))
-					streamWidget.DisableStopButton()
+					fyne.Do(func() {
+						streamWidget.SetStatus(fmt.Sprintf("Complete (%d messages in %v)", messageCount, duration.Round(time.Millisecond)))
+						streamWidget.DisableStopButton()
+					})
 				} else {
 					w.logger.Error("server stream error",
 						slog.String("method", methodName),
@@ -567,8 +589,10 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 						slog.Any("error", err),
 					)
 
-					streamWidget.SetStatus(fmt.Sprintf("Error: %s (received %d messages)", err.Error(), messageCount))
-					streamWidget.DisableStopButton()
+					fyne.Do(func() {
+						streamWidget.SetStatus(fmt.Sprintf("Error: %s (received %d messages)", err.Error(), messageCount))
+						streamWidget.DisableStopButton()
+					})
 				}
 
 				return
@@ -761,8 +785,10 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		if err != nil {
 			w.logger.Error("client stream failed", slog.Any("error", err))
 
-			// Show rich gRPC error dialog
-			uierrors.ShowGRPCError(err, w.window, nil)
+			// Show rich gRPC error dialog (must be on main thread)
+			fyne.Do(func() {
+				uierrors.ShowGRPCError(err, w.window, nil)
+			})
 
 			// Also set error in response panel for inline visibility
 			_ = w.state.Response.Error.Set(err.Error())
@@ -1019,7 +1045,9 @@ func (w *MainWindow) receiveBidiMessages() {
 				slog.String("method", methodName),
 				slog.Int("message_count", messageCount),
 			)
-			w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages)", messageCount))
+			fyne.Do(func() {
+				w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages)", messageCount))
+			})
 			return
 		}
 
@@ -1029,8 +1057,10 @@ func (w *MainWindow) receiveBidiMessages() {
 				slog.Int("message_count", messageCount),
 				slog.Any("error", err),
 			)
-			w.bidiPanel.SetStatus(fmt.Sprintf("Receive error: %s", err.Error()))
-			w.bidiPanel.DisableSendControls()
+			fyne.Do(func() {
+				w.bidiPanel.SetStatus(fmt.Sprintf("Receive error: %s", err.Error()))
+				w.bidiPanel.DisableSendControls()
+			})
 			return
 		}
 
@@ -1043,8 +1073,10 @@ func (w *MainWindow) receiveBidiMessages() {
 			jsonMsg = string(prettyBytes)
 		}
 
-		// Add message to UI (bindings are thread-safe)
-		w.bidiPanel.AddReceived(jsonMsg)
+		// Add message to UI (must be on main thread)
+		fyne.Do(func() {
+			w.bidiPanel.AddReceived(jsonMsg)
+		})
 
 		w.logger.Debug("received bidi stream message",
 			slog.String("method", methodName),

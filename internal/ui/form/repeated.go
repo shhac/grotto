@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -44,13 +45,17 @@ func NewRepeatedFieldWidget(name string, fd protoreflect.FieldDescriptor) *Repea
 		}
 	})
 
+	// Create scroll container with minimum size for proper layout
+	scroll := container.NewVScroll(r.listBox)
+	scroll.SetMinSize(fyne.NewSize(0, 100)) // Ensure scroll area has minimum height
+
 	// Main container with label, list, and add button
 	r.container = container.NewBorder(
 		widget.NewLabel(name+":"),
 		r.addButton,
 		nil,
 		nil,
-		container.NewVScroll(r.listBox),
+		scroll,
 	)
 
 	r.ExtendBaseWidget(r)
@@ -64,7 +69,7 @@ func (r *RepeatedFieldWidget) CreateRenderer() fyne.WidgetRenderer {
 
 // AddItem adds a new item to the list
 func (r *RepeatedFieldWidget) AddItem() {
-	index := len(r.items)
+	itemNum := len(r.items) + 1
 
 	// Create item widget based on field kind
 	var itemWidget fyne.CanvasObject
@@ -72,7 +77,7 @@ func (r *RepeatedFieldWidget) AddItem() {
 	if r.fd.Kind() == protoreflect.MessageKind {
 		// Repeated message: create nested form
 		nestedWidget := NewNestedMessageWidget(
-			fmt.Sprintf("Item %d", index+1),
+			fmt.Sprintf("Item %d", itemNum),
 			r.fd.Message(),
 		)
 		itemWidget = nestedWidget
@@ -81,22 +86,38 @@ func (r *RepeatedFieldWidget) AddItem() {
 		itemWidget = r.createScalarWidget()
 	}
 
-	// Create remove button
-	removeBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		r.RemoveItem(index)
-		if r.onRemove != nil {
-			r.onRemove(index)
-		}
-	})
-
-	// Create row with item and remove button
+	// Create row container first (before remove button callback)
 	row := container.NewBorder(
 		nil,
 		nil,
 		nil,
-		removeBtn,
+		nil, // Will set remove button after
 		itemWidget,
 	)
+
+	// Create remove button with dynamic index lookup
+	// Instead of capturing the index at creation time, find the row's current index when clicked
+	removeBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		// Find the current index of this row
+		currentIndex := -1
+		for i, item := range r.items {
+			if item == row {
+				currentIndex = i
+				break
+			}
+		}
+		if currentIndex >= 0 {
+			r.RemoveItem(currentIndex)
+			if r.onRemove != nil {
+				r.onRemove(currentIndex)
+			}
+		}
+	})
+
+	// Update the row to include the remove button
+	row.Objects = []fyne.CanvasObject{itemWidget, removeBtn}
+	row.Layout = layout.NewBorderLayout(nil, nil, nil, removeBtn)
+	row.Refresh()
 
 	r.items = append(r.items, row)
 	r.listBox.Add(row)

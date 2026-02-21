@@ -17,8 +17,9 @@ import (
 type ServiceBrowser struct {
 	widget.BaseWidget
 
-	tree     *widget.Tree
-	services binding.UntypedList // []domain.Service
+	tree          *widget.Tree
+	themedTree    fyne.CanvasObject // tree wrapped with custom theme
+	services      binding.UntypedList // []domain.Service
 
 	// Callbacks
 	onMethodSelect func(service domain.Service, method domain.Method)
@@ -39,6 +40,11 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 
 	b.tree.OnSelected = b.onTreeSelected
 
+	// Create a themed container with custom chevron icons for the tree
+	// This only affects the tree widget, not other UI elements
+	customTheme := newTreeTheme(theme.DefaultTheme())
+	b.themedTree = container.NewThemeOverride(b.tree, customTheme)
+
 	b.ExtendBaseWidget(b)
 	return b
 }
@@ -55,7 +61,8 @@ func (b *ServiceBrowser) Refresh() {
 
 // CreateRenderer creates the renderer for this widget
 func (b *ServiceBrowser) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(b.tree)
+	// Return the themed container instead of the raw tree
+	return widget.NewSimpleRenderer(b.themedTree)
 }
 
 // childUIDs returns the child UIDs for a given parent UID
