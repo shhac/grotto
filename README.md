@@ -1,47 +1,43 @@
 # Grotto
 
-A permissive, user-friendly gRPC client with a modern GUI.
-
-<!-- Screenshot placeholder - TODO: Add screenshot -->
+A permissive, user-friendly gRPC client with a native desktop GUI.
 
 ## Features
 
-- **Reflection-based discovery** - Automatically discovers services and methods via gRPC Server Reflection
+- **Reflection-based discovery** — Automatically discovers services and methods via gRPC Server Reflection, with permissive handling of malformed server descriptors
 - **Dual interaction modes**:
-  - **Form mode** - User-friendly forms for request construction
-  - **Text mode** - Direct JSON editing for advanced users
-- **Streaming support** - Full support for unary, server streaming, client streaming, and bidirectional streaming
-- **TLS support** - Secure connections with configurable TLS options
-- **Workspaces** - Organize and persist your gRPC connections and requests
-- **Request history** - Track and replay previous requests
+  - **Form mode** — Auto-generated forms with validation, nested message support, maps, repeated fields, and oneofs
+  - **Text mode** — Direct JSON editing with bidirectional sync to form mode
+- **Streaming support** — Unary, server streaming, client streaming, and bidirectional streaming RPCs
+- **Well-known types** — Native form widgets for Timestamp (RFC3339), Duration, and FieldMask fields
+- **Metadata** — Send and inspect gRPC request/response metadata headers
+- **TLS support** — Secure connections with configurable TLS, mTLS, and skip-verify options
+- **Workspaces** — Save and load connections, selected methods, and request data
+- **Request history** — Track and replay previous requests
+- **Keyboard shortcuts** — See [SHORTCUTS.md](SHORTCUTS.md) for the full list
 
-## Requirements
+## Install
 
-- Go 1.21 or later
-- Fyne dependencies (system libraries required for GUI)
-  - See [Fyne documentation](https://developer.fyne.io/started/) for platform-specific requirements
+### Homebrew (macOS)
 
-## Build
+```bash
+brew install shhac/tap/grotto
+```
+
+### Build from source
+
+Requires Go 1.25+ and [Fyne system dependencies](https://developer.fyne.io/started/).
 
 ```bash
 go build -o grotto ./cmd/grotto
-```
-
-## Run
-
-```bash
 ./grotto
 ```
-
-## Keyboard Shortcuts
-
-See [SHORTCUTS.md](SHORTCUTS.md) for a complete list of keyboard shortcuts and navigation tips.
 
 ## Development
 
 ### Test Servers
 
-The project includes several test gRPC servers for development and testing purposes. See [testdata/README.md](testdata/README.md) for details on running them.
+The project includes several test gRPC servers for development and testing. See [testdata/README.md](testdata/README.md) for details.
 
 ## License
 

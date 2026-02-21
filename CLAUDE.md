@@ -41,10 +41,10 @@ go vet ./...
    - Fixes common issues: invalid reserved ranges, malformed map entries, missing imports
    - Uses `github.com/jhump/protoreflect` for lenient parsing
 
-2. **Proto Form Generator** (`internal/ui/form_builder.go`) - Converts proto field definitions to Fyne widgets
-   - Maps proto types to appropriate widgets (Entry, Check, Select, etc.)
-   - Handles nested messages, repeated fields, oneofs, and maps
-   - Special handling for well-known types (Timestamp, Duration)
+2. **Proto Form Generator** (`internal/ui/form/`) - Converts proto field definitions to Fyne widgets
+   - `mapper.go` maps proto types to appropriate widgets (Entry, Check, Select, etc.)
+   - `builder.go` handles nested messages, repeated fields, oneofs, and maps
+   - Special handling for well-known types (Timestamp, Duration, FieldMask)
 
 3. **gRPC Invoker** (`internal/grpc/`) - Request execution supporting unary and streaming RPCs
 
