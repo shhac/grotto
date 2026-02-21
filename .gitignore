@@ -21,8 +21,9 @@ CLAUDE.local.md
 go.work
 go.work.sum
 
-# Grotto binary
+# Grotto binaries
 /grotto
+/grotto_*
 
 # Test server binaries
 /testdata/server/server
@@ -45,6 +46,7 @@ go.work.sum
 
 # Temporary/verification files
 *.backup
+*.bak
 verify.sh
 VERIFICATION_RESULTS.md
 QUICK_START.md
