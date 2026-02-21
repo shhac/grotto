@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
@@ -69,47 +70,120 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			options[i] = string(val.Name())
 		}
 
-		sel := widget.NewSelect(options, nil)
-		if len(options) > 0 {
-			sel.SetSelected(options[0]) // Default to first enum value
-		}
+		const searchableEnumThreshold = 10
 
-		fw.Widget = sel
-		fw.GetValue = func() interface{} {
-			// Return enum number
-			for i := 0; i < values.Len(); i++ {
-				val := values.Get(i)
-				if string(val.Name()) == sel.Selected {
-					return int32(val.Number())
-				}
-			}
-			return int32(0)
-		}
-		fw.SetValue = func(v interface{}) {
-			var enumNum int32
-			switch t := v.(type) {
-			case int32:
-				enumNum = t
-			case int:
-				enumNum = int32(t)
-			default:
-				return
-			}
-
-			// Find enum name by number
-			for i := 0; i < values.Len(); i++ {
-				val := values.Get(i)
-				if val.Number() == protoreflect.EnumNumber(enumNum) {
-					sel.SetSelected(string(val.Name()))
+		if len(options) > searchableEnumThreshold {
+			// Large enum: use SelectEntry with type-to-filter
+			selEntry := widget.NewSelectEntry(options)
+			selEntry.SetPlaceHolder("Type to filter...")
+			allOptions := options // capture full list for filtering
+			selEntry.OnChanged = func(text string) {
+				if text == "" {
+					selEntry.SetOptions(allOptions)
 					return
 				}
+				lower := strings.ToLower(text)
+				filtered := make([]string, 0)
+				for _, opt := range allOptions {
+					if strings.Contains(strings.ToLower(opt), lower) {
+						filtered = append(filtered, opt)
+					}
+				}
+				selEntry.SetOptions(filtered)
 			}
+			selEntry.Validator = func(s string) error {
+				if s == "" {
+					return nil
+				}
+				for i := 0; i < values.Len(); i++ {
+					if string(values.Get(i).Name()) == s {
+						return nil
+					}
+				}
+				return fmt.Errorf("unknown enum value: %s", s)
+			}
+			if len(options) > 0 {
+				selEntry.SetText(options[0])
+			}
+			fw.Widget = selEntry
+			fw.GetValue = func() interface{} {
+				for i := 0; i < values.Len(); i++ {
+					val := values.Get(i)
+					if string(val.Name()) == selEntry.Text {
+						return int32(val.Number())
+					}
+				}
+				return int32(0)
+			}
+			fw.SetValue = func(v interface{}) {
+				var enumNum int32
+				switch t := v.(type) {
+				case int32:
+					enumNum = t
+				case int:
+					enumNum = int32(t)
+				default:
+					return
+				}
+				for i := 0; i < values.Len(); i++ {
+					val := values.Get(i)
+					if val.Number() == protoreflect.EnumNumber(enumNum) {
+						selEntry.SetText(string(val.Name()))
+						return
+					}
+				}
+			}
+			fw.Validate = func() error { return selEntry.Validate() }
+		} else {
+			// Small enum: use plain Select
+			sel := widget.NewSelect(options, nil)
+			if len(options) > 0 {
+				sel.SetSelected(options[0]) // Default to first enum value
+			}
+
+			fw.Widget = sel
+			fw.GetValue = func() interface{} {
+				// Return enum number
+				for i := 0; i < values.Len(); i++ {
+					val := values.Get(i)
+					if string(val.Name()) == sel.Selected {
+						return int32(val.Number())
+					}
+				}
+				return int32(0)
+			}
+			fw.SetValue = func(v interface{}) {
+				var enumNum int32
+				switch t := v.(type) {
+				case int32:
+					enumNum = t
+				case int:
+					enumNum = int32(t)
+				default:
+					return
+				}
+
+				// Find enum name by number
+				for i := 0; i < values.Len(); i++ {
+					val := values.Get(i)
+					if val.Number() == protoreflect.EnumNumber(enumNum) {
+						sel.SetSelected(string(val.Name()))
+						return
+					}
+				}
+			}
+			fw.Validate = func() error { return nil }
 		}
-		fw.Validate = func() error { return nil }
 
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt32(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -124,15 +198,18 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil // Optional field
-			}
-			return ValidateInt32(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt64(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -147,15 +224,18 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			return ValidateInt64(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint32(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -170,15 +250,18 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			return ValidateUint32(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint64(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -193,15 +276,18 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			return ValidateUint64(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.FloatKind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateFloat(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -216,15 +302,18 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			return ValidateFloat(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.DoubleKind:
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateDouble(s)
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -239,10 +328,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			return ValidateDouble(entry.Text)
+			return entry.Validate()
 		}
 
 	case protoreflect.StringKind:
@@ -261,6 +347,13 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		// Entry with base64 encoding hint
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("Base64 encoded bytes")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			_, err := base64.StdEncoding.DecodeString(s)
+			return err
+		}
 		fw.Widget = entry
 		fw.GetValue = func() interface{} {
 			if entry.Text == "" {
@@ -280,11 +373,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			}
 		}
 		fw.Validate = func() error {
-			if entry.Text == "" {
-				return nil
-			}
-			_, err := base64.StdEncoding.DecodeString(entry.Text)
-			return err
+			return entry.Validate()
 		}
 
 	case protoreflect.MessageKind:
@@ -294,6 +383,16 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		case "google.protobuf.Timestamp":
 			entry := widget.NewEntry()
 			entry.SetPlaceHolder("RFC3339 format (e.g., 2024-01-15T10:30:00Z)")
+			entry.Validator = func(s string) error {
+				if s == "" {
+					return nil
+				}
+				_, err := time.Parse(time.RFC3339, s)
+				if err != nil {
+					return fmt.Errorf("invalid timestamp: use RFC3339 format")
+				}
+				return nil
+			}
 			fw.Widget = entry
 			fw.GetValue = func() interface{} { return entry.Text }
 			fw.SetValue = func(v interface{}) {
@@ -301,11 +400,21 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 					entry.SetText(s)
 				}
 			}
-			fw.Validate = func() error { return nil } // TODO: Add RFC3339 validation
+			fw.Validate = func() error { return entry.Validate() }
 
 		case "google.protobuf.Duration":
 			entry := widget.NewEntry()
 			entry.SetPlaceHolder("Duration format (e.g., 5m30s)")
+			entry.Validator = func(s string) error {
+				if s == "" {
+					return nil
+				}
+				_, err := time.ParseDuration(s)
+				if err != nil {
+					return fmt.Errorf("invalid duration: use Go duration format (e.g., 5m30s)")
+				}
+				return nil
+			}
 			fw.Widget = entry
 			fw.GetValue = func() interface{} { return entry.Text }
 			fw.SetValue = func(v interface{}) {
@@ -313,7 +422,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 					entry.SetText(s)
 				}
 			}
-			fw.Validate = func() error { return nil } // TODO: Add duration validation
+			fw.Validate = func() error { return entry.Validate() }
 
 		case "google.protobuf.FieldMask":
 			entry := widget.NewMultiLineEntry()

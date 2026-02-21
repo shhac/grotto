@@ -1,7 +1,11 @@
 package form
 
 import (
+	"image/color"
+
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -28,11 +32,17 @@ func NewNestedMessageWidget(name string, md protoreflect.MessageDescriptor) *Nes
 	// Create nested form builder
 	n.builder = NewFormBuilder(md)
 
+	// Wrap nested content with left padding for visual depth cue.
+	// Since nesting is recursive, each level auto-compounds the indent.
+	leftPad := canvas.NewRectangle(color.Transparent)
+	leftPad.SetMinSize(fyne.NewSize(12, 0))
+	indentedContent := container.NewBorder(nil, nil, leftPad, nil, n.builder.Build())
+
 	// Create accordion for expand/collapse behavior
 	n.accordion = widget.NewAccordion(
 		widget.NewAccordionItem(
 			name,
-			n.builder.Build(),
+			indentedContent,
 		),
 	)
 
