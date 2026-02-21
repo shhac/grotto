@@ -498,7 +498,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 // mouse-wheel events propagate to the outer form VScroll instead of being
 // silently consumed by the Entry's embedded Scroll widget.
 func newFormEntry() *widget.Entry {
-	e := newFormEntry()
+	e := widget.NewEntry()
 	e.Wrapping = fyne.TextWrapOff
 	e.Scroll = container.ScrollNone
 	return e
