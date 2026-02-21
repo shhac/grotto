@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -62,10 +63,13 @@ type MainWindow struct {
 	historyPanel   *history.HistoryPanel
 	themeSelector  *widget.Select
 
-	// Streaming state
+	// Streaming state (protected by streamMu)
+	streamMu           sync.Mutex
 	clientStreamHandle *grpc.ClientStreamHandle
 	bidiStreamHandle   *grpc.BidiStreamHandle
 	bidiCancelFunc     context.CancelFunc
+	serverStreamCancel context.CancelFunc
+	unaryCancel        context.CancelFunc
 
 	// Layout mode tracking (avoid unnecessary rebuilds)
 	inBidiMode bool
@@ -112,6 +116,12 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 
 	// Set up keyboard shortcuts
 	mw.setupKeyboardShortcuts()
+
+	// Cancel all streams on window close
+	window.SetCloseIntercept(func() {
+		mw.cancelAllStreams()
+		window.Close()
+	})
 
 	// Set default window size
 	window.Resize(fyne.NewSize(1200, 800))
@@ -255,8 +265,45 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 	}()
 }
 
+// cancelAllStreams cancels all active stream operations and clears their handles.
+// Cancel funcs are called outside the lock to avoid potential deadlocks.
+func (w *MainWindow) cancelAllStreams() {
+	w.streamMu.Lock()
+	unaryCancel := w.unaryCancel
+	w.unaryCancel = nil
+	serverCancel := w.serverStreamCancel
+	w.serverStreamCancel = nil
+	bidiCancel := w.bidiCancelFunc
+	w.bidiCancelFunc = nil
+	w.bidiStreamHandle = nil
+	clientHandle := w.clientStreamHandle
+	w.clientStreamHandle = nil
+	w.streamMu.Unlock()
+
+	// Call cancel funcs outside the lock
+	if unaryCancel != nil {
+		unaryCancel()
+	}
+	if serverCancel != nil {
+		serverCancel()
+	}
+	if bidiCancel != nil {
+		bidiCancel()
+	}
+	if clientHandle != nil {
+		// CloseAndReceive blocks, so run in goroutine
+		go clientHandle.CloseAndReceive()
+	}
+}
+
 // handleDisconnect closes the connection
 func (w *MainWindow) handleDisconnect() {
+	// Cancel all active streams before disconnecting
+	w.cancelAllStreams()
+	if w.inBidiMode {
+		w.switchToNormalPanel()
+	}
+
 	go func() {
 		// Clean up reflection client
 		w.app.CleanupReflectionClient()
@@ -292,6 +339,9 @@ func (w *MainWindow) handleDisconnect() {
 
 // handleMethodSelect updates the UI when a method is selected
 func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Method) {
+	// Cancel any active streams before switching methods
+	w.cancelAllStreams()
+
 	w.logger.Debug("method selected",
 		slog.String("service", service.FullName),
 		slog.String("method", method.Name),
@@ -402,7 +452,11 @@ func (w *MainWindow) handleSendRequest(jsonStr string, metadataMap map[string]st
 // handleUnaryRequest handles unary RPC invocations
 func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]string, methodDesc *desc.MethodDescriptor) {
 	go func() {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		w.streamMu.Lock()
+		w.unaryCancel = cancel
+		w.streamMu.Unlock()
 
 		serviceName, _ := w.state.SelectedService.Get()
 		methodName, _ := w.state.SelectedMethod.Get()
@@ -498,6 +552,9 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 // handleServerStreamRequest handles server streaming RPC invocations
 func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[string]string, methodDesc *desc.MethodDescriptor) {
 	ctx, cancel := context.WithCancel(context.Background())
+	w.streamMu.Lock()
+	w.serverStreamCancel = cancel
+	w.streamMu.Unlock()
 
 	serviceName, _ := w.state.SelectedService.Get()
 	methodName, _ := w.state.SelectedMethod.Get()
@@ -518,6 +575,9 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 	streamWidget.SetOnStop(func() {
 		w.logger.Info("user requested stream stop")
 		cancel()
+		w.streamMu.Lock()
+		w.serverStreamCancel = nil
+		w.streamMu.Unlock()
 		streamWidget.DisableStopButton()
 		streamWidget.SetStatus("Stopped by user")
 	})
@@ -538,6 +598,7 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 
 	// Process messages in a goroutine
 	go func() {
+		defer cancel() // ensure context is cleaned up on all exit paths
 		messageCount := 0
 
 		for {
@@ -679,7 +740,10 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 	}
 
 	// If we don't have an active stream, start one
-	if w.clientStreamHandle == nil {
+	w.streamMu.Lock()
+	needsNewStream := w.clientStreamHandle == nil
+	w.streamMu.Unlock()
+	if needsNewStream {
 		// Get method descriptor
 		refClient := w.app.ReflectionClient()
 		if refClient == nil {
@@ -721,7 +785,9 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 			return
 		}
 
+		w.streamMu.Lock()
 		w.clientStreamHandle = handle
+		w.streamMu.Unlock()
 		w.logger.Info("client stream started",
 			slog.String("service", serviceName),
 			slog.String("method", methodName),
@@ -729,14 +795,23 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 	}
 
 	// Send message on the stream
-	if err := w.clientStreamHandle.Send(jsonStr); err != nil {
+	w.streamMu.Lock()
+	csHandle := w.clientStreamHandle
+	w.streamMu.Unlock()
+	if csHandle == nil {
+		w.logger.Error("client stream handle unexpectedly nil")
+		return
+	}
+	if err := csHandle.Send(jsonStr); err != nil {
 		w.logger.Error("failed to send client stream message", slog.Any("error", err))
 		uierrors.ShowGRPCError(err, w.window, func() {
 			// Retry callback - attempt to send the message again
 			w.handleClientStreamSend(jsonStr, metadataMap)
 		})
 		// Clean up handle on error
+		w.streamMu.Lock()
 		w.clientStreamHandle = nil
+		w.streamMu.Unlock()
 		return
 	}
 
@@ -748,11 +823,17 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 // handleClientStreamFinish closes the client stream and receives the final response.
 // This is called when the user clicks "Finish & Get Response" in the streaming input widget.
 func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
-	if w.clientStreamHandle == nil {
+	w.streamMu.Lock()
+	hasStream := w.clientStreamHandle != nil
+	w.streamMu.Unlock()
+	if !hasStream {
 		// No active stream - start one if we haven't sent any messages yet
 		// This allows "Finish & Get Response" to work even without sending messages
 		w.handleClientStreamSend("{}", metadataMap)
-		if w.clientStreamHandle == nil {
+		w.streamMu.Lock()
+		hasStream = w.clientStreamHandle != nil
+		w.streamMu.Unlock()
+		if !hasStream {
 			// Failed to start stream
 			return
 		}
@@ -774,13 +855,23 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		startTime := time.Now()
 
 		// Close stream and receive response
-		respJSON, err := w.clientStreamHandle.CloseAndReceive()
+		w.streamMu.Lock()
+		csHandle := w.clientStreamHandle
+		w.streamMu.Unlock()
+		if csHandle == nil {
+			_ = w.state.Response.Loading.Set(false)
+			_ = w.state.Response.Error.Set("Client stream was cancelled")
+			return
+		}
+		respJSON, err := csHandle.CloseAndReceive()
 
 		duration := time.Since(startTime)
 		_ = w.state.Response.Loading.Set(false)
 
 		// Clean up handle
+		w.streamMu.Lock()
 		w.clientStreamHandle = nil
+		w.streamMu.Unlock()
 
 		if err != nil {
 			w.logger.Error("client stream failed", slog.Any("error", err))
@@ -934,14 +1025,8 @@ func (w *MainWindow) switchToNormalPanel() {
 		return
 	}
 
-	// Clean up any active bidi stream
-	if w.bidiStreamHandle != nil {
-		if w.bidiCancelFunc != nil {
-			w.bidiCancelFunc()
-		}
-		w.bidiStreamHandle = nil
-		w.bidiCancelFunc = nil
-	}
+	// Clean up any active streams
+	w.cancelAllStreams()
 
 	// Reset to original layout
 	w.SetContent()
@@ -959,7 +1044,10 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 	}
 
 	// If no active stream, start one
-	if w.bidiStreamHandle == nil {
+	w.streamMu.Lock()
+	needsNewBidiStream := w.bidiStreamHandle == nil
+	w.streamMu.Unlock()
+	if needsNewBidiStream {
 		refClient := w.app.ReflectionClient()
 		if refClient == nil {
 			dialog.ShowError(fmt.Errorf("reflection client not initialized"), w.window)
@@ -990,7 +1078,9 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
+		w.streamMu.Lock()
 		w.bidiCancelFunc = cancel
+		w.streamMu.Unlock()
 
 		handle, err := invoker.InvokeBidiStream(ctx, methodDesc, md)
 		if err != nil {
@@ -999,11 +1089,15 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 				// Retry callback - attempt to start stream again
 				w.handleBidiStreamSend(jsonStr, metadataMap)
 			})
+			w.streamMu.Lock()
 			w.bidiCancelFunc = nil
+			w.streamMu.Unlock()
 			return
 		}
 
+		w.streamMu.Lock()
 		w.bidiStreamHandle = handle
+		w.streamMu.Unlock()
 		w.logger.Info("bidi stream started",
 			slog.String("service", serviceName),
 			slog.String("method", methodName),
@@ -1016,16 +1110,26 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 	}
 
 	// Send message on the stream
-	if err := w.bidiStreamHandle.Send(jsonStr); err != nil {
+	w.streamMu.Lock()
+	bidiHandle := w.bidiStreamHandle
+	w.streamMu.Unlock()
+	if bidiHandle == nil {
+		w.logger.Error("bidi stream handle unexpectedly nil")
+		return
+	}
+	if err := bidiHandle.Send(jsonStr); err != nil {
 		w.logger.Error("failed to send bidi stream message", slog.Any("error", err))
 		w.bidiPanel.SetStatus(fmt.Sprintf("Send error: %s", err.Error()))
 		w.bidiPanel.DisableSendControls()
 		// Clean up handle on error
-		if w.bidiCancelFunc != nil {
-			w.bidiCancelFunc()
-		}
+		w.streamMu.Lock()
+		bidiCancel := w.bidiCancelFunc
 		w.bidiStreamHandle = nil
 		w.bidiCancelFunc = nil
+		w.streamMu.Unlock()
+		if bidiCancel != nil {
+			bidiCancel()
+		}
 		return
 	}
 
@@ -1036,9 +1140,17 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 func (w *MainWindow) receiveBidiMessages() {
 	methodName, _ := w.state.SelectedMethod.Get()
 
+	w.streamMu.Lock()
+	handle := w.bidiStreamHandle
+	w.streamMu.Unlock()
+	if handle == nil {
+		w.logger.Warn("bidi stream handle nil at receive start")
+		return
+	}
+
 	messageCount := 0
 	for {
-		jsonMsg, err := w.bidiStreamHandle.Recv()
+		jsonMsg, err := handle.Recv()
 
 		if err == io.EOF {
 			w.logger.Info("bidi stream receive completed",
@@ -1087,7 +1199,10 @@ func (w *MainWindow) receiveBidiMessages() {
 
 // handleBidiStreamClose closes the send side of the bidi stream
 func (w *MainWindow) handleBidiStreamClose() {
-	if w.bidiStreamHandle == nil {
+	w.streamMu.Lock()
+	bidiHandle := w.bidiStreamHandle
+	w.streamMu.Unlock()
+	if bidiHandle == nil {
 		w.logger.Warn("no active bidi stream to close")
 		return
 	}
@@ -1098,7 +1213,7 @@ func (w *MainWindow) handleBidiStreamClose() {
 		slog.String("method", methodName),
 	)
 
-	if err := w.bidiStreamHandle.CloseSend(); err != nil {
+	if err := bidiHandle.CloseSend(); err != nil {
 		w.logger.Error("failed to close bidi stream send side", slog.Any("error", err))
 		w.bidiPanel.SetStatus(fmt.Sprintf("Close send error: %s", err.Error()))
 		return

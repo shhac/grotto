@@ -83,25 +83,45 @@ func (w *MainWindow) setupKeyboardShortcuts() {
 	w.logger.Info("keyboard shortcuts configured")
 }
 
-// handleCancelOperation cancels any active streaming operation
+// handleCancelOperation cancels any active streaming operation.
+// Priority order: bidi > server stream > client stream > unary.
 func (w *MainWindow) handleCancelOperation() {
-	// Cancel bidi stream if active
-	if w.bidiCancelFunc != nil {
-		w.bidiCancelFunc()
+	w.streamMu.Lock()
+	bidiCancel := w.bidiCancelFunc
+	serverCancel := w.serverStreamCancel
+	clientHandle := w.clientStreamHandle
+	unaryCancel := w.unaryCancel
+
+	// Cancel in priority order
+	switch {
+	case bidiCancel != nil:
 		w.bidiCancelFunc = nil
 		w.bidiStreamHandle = nil
+		w.streamMu.Unlock()
+		bidiCancel()
 		w.bidiPanel.SetStatus("Cancelled by user (Escape)")
 		w.logger.Info("bidi stream cancelled by user")
-		return
-	}
 
-	// Cancel client stream if active
-	if w.clientStreamHandle != nil {
+	case serverCancel != nil:
+		w.serverStreamCancel = nil
+		w.streamMu.Unlock()
+		serverCancel()
+		w.logger.Info("server stream cancelled by user")
+
+	case clientHandle != nil:
 		w.clientStreamHandle = nil
+		w.streamMu.Unlock()
+		go clientHandle.CloseAndReceive()
 		w.logger.Info("client stream cancelled by user")
-		return
-	}
 
-	// If no operation is active, log it
-	w.logger.Debug("no active operation to cancel")
+	case unaryCancel != nil:
+		w.unaryCancel = nil
+		w.streamMu.Unlock()
+		unaryCancel()
+		w.logger.Info("unary request cancelled by user")
+
+	default:
+		w.streamMu.Unlock()
+		w.logger.Debug("no active operation to cancel")
+	}
 }
