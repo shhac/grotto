@@ -19,7 +19,6 @@ type ServiceBrowser struct {
 	widget.BaseWidget
 
 	tree          *widget.Tree
-	themedTree    fyne.CanvasObject // tree wrapped with custom theme
 	services      binding.UntypedList // []domain.Service
 	placeholder   *widget.Label       // shown when no services loaded
 	content       *fyne.Container     // stack switching between placeholder and tree
@@ -52,11 +51,6 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	)
 
 	b.tree.OnSelected = b.onTreeSelected
-
-	// Create a themed container with custom chevron icons for the tree
-	// This only affects the tree widget, not other UI elements
-	customTheme := newTreeTheme(theme.DefaultTheme())
-	b.themedTree = container.NewThemeOverride(b.tree, customTheme)
 
 	// Empty state placeholder
 	b.placeholder = widget.NewLabel("Enter a server address and click Connect to get started")
@@ -274,7 +268,7 @@ func (b *ServiceBrowser) rebuildIndex() {
 				),
 			}
 		} else {
-			b.content.Objects = []fyne.CanvasObject{b.themedTree}
+			b.content.Objects = []fyne.CanvasObject{b.tree}
 		}
 		b.content.Refresh()
 	}
