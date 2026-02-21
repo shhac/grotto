@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/shhac/grotto/internal/ui/components"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -19,7 +20,7 @@ type NestedMessageWidget struct {
 	expanded  bool
 	builder   *FormBuilder // Nested form builder
 	container fyne.CanvasObject
-	accordion *widget.Accordion
+	section   *components.TreeSection
 }
 
 // NewNestedMessageWidget creates an expandable nested message widget
@@ -38,15 +39,10 @@ func NewNestedMessageWidget(name string, md protoreflect.MessageDescriptor) *Nes
 	leftPad.SetMinSize(fyne.NewSize(12, 0))
 	indentedContent := container.NewBorder(nil, nil, leftPad, nil, n.builder.BuildContent())
 
-	// Create accordion for expand/collapse behavior
-	n.accordion = widget.NewAccordion(
-		widget.NewAccordionItem(
-			name,
-			indentedContent,
-		),
-	)
+	// Create tree-style collapsible section with ▶/▼ disclosure icons
+	n.section = components.NewCollapsibleSection(name, indentedContent)
 
-	n.container = n.accordion
+	n.container = n.section
 	n.ExtendBaseWidget(n)
 
 	return n
@@ -61,9 +57,9 @@ func (n *NestedMessageWidget) CreateRenderer() fyne.WidgetRenderer {
 func (n *NestedMessageWidget) Toggle() {
 	n.expanded = !n.expanded
 	if n.expanded {
-		n.accordion.Open(0)
+		n.section.Open()
 	} else {
-		n.accordion.Close(0)
+		n.section.Close()
 	}
 }
 
@@ -99,9 +95,9 @@ func (n *NestedMessageWidget) SetValue(v interface{}) {
 func (n *NestedMessageWidget) SetExpanded(expanded bool) {
 	n.expanded = expanded
 	if expanded {
-		n.accordion.Open(0)
+		n.section.Open()
 	} else {
-		n.accordion.Close(0)
+		n.section.Close()
 	}
 }
 
