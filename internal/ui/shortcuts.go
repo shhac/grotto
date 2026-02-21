@@ -100,18 +100,24 @@ func (w *MainWindow) handleCancelOperation() {
 		w.streamMu.Unlock()
 		bidiCancel()
 		w.bidiPanel.SetStatus("Cancelled by user (Escape)")
+		w.bidiPanel.DisableSendControls()
 		w.logger.Info("bidi stream cancelled by user")
 
 	case serverCancel != nil:
 		w.serverStreamCancel = nil
 		w.streamMu.Unlock()
 		serverCancel()
+		streamWidget := w.responsePanel.StreamingWidget()
+		streamWidget.DisableStopButton()
+		streamWidget.SetStatus("Cancelled by user (Escape)")
 		w.logger.Info("server stream cancelled by user")
 
 	case clientHandle != nil:
 		w.clientStreamHandle = nil
 		w.streamMu.Unlock()
 		go clientHandle.CloseAndReceive()
+		w.requestPanel.StreamingInput().DisableSendControls()
+		w.requestPanel.StreamingInput().SetStatus("Cancelled by user (Escape)")
 		w.logger.Info("client stream cancelled by user")
 
 	case unaryCancel != nil:

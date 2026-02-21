@@ -192,6 +192,11 @@ func (p *RequestPanel) SetOnStreamEnd(fn func(metadata map[string]string)) {
 	p.onStreamEnd = fn
 }
 
+// StreamingInput returns the client streaming input widget.
+func (p *RequestPanel) StreamingInput() *StreamingInputWidget {
+	return p.streamingInput
+}
+
 // SetClientStreaming switches the panel to/from client streaming mode
 func (p *RequestPanel) SetClientStreaming(streaming bool) {
 	p.isStreaming = streaming

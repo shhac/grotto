@@ -1,6 +1,8 @@
 package request
 
 import (
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -24,6 +26,9 @@ type StreamingInputWidget struct {
 	sendBtn   *widget.Button // Send current message
 	finishBtn *widget.Button // Close stream and get response
 
+	statusLabel *widget.Label // Status display
+	totalSent   int           // Total sent including evicted
+
 	onSend   func(json string) // Callback when Send is clicked
 	onFinish func()            // Callback when Finish is clicked
 }
@@ -32,6 +37,7 @@ type StreamingInputWidget struct {
 func NewStreamingInputWidget() *StreamingInputWidget {
 	w := &StreamingInputWidget{
 		sentMessages: binding.NewStringList(),
+		statusLabel:  widget.NewLabel("Ready"),
 	}
 
 	// Message entry - multiline JSON editor
@@ -45,12 +51,15 @@ func NewStreamingInputWidget() *StreamingInputWidget {
 			return w.sentMessages.Length()
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("")
+			entry := widget.NewMultiLineEntry()
+			entry.Wrapping = fyne.TextWrapWord
+			entry.Disable()
+			return entry
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			label := obj.(*widget.Label)
+			entry := obj.(*widget.Entry)
 			msg, _ := w.sentMessages.GetValue(id)
-			label.SetText(msg)
+			entry.SetText(msg)
 		},
 	)
 
@@ -94,6 +103,7 @@ func (w *StreamingInputWidget) handleSend() {
 
 	// Add to sent messages list
 	_ = w.sentMessages.Append(msg)
+	w.totalSent++
 
 	// Evict oldest if over cap
 	if count := w.sentMessages.Length(); count > maxStreamMessages {
@@ -108,6 +118,7 @@ func (w *StreamingInputWidget) handleSend() {
 
 	// Refresh the list
 	w.sentList.Refresh()
+	w.updateStatus()
 }
 
 // handleFinish closes the stream and requests the final response.
@@ -117,11 +128,16 @@ func (w *StreamingInputWidget) handleFinish() {
 	}
 
 	w.onFinish()
+	w.sendBtn.Disable()
+	w.finishBtn.Disable()
+	w.messageEntry.Disable()
+	w.statusLabel.SetText("Stream closed")
 }
 
 // AddSent adds a sent message to the list (for programmatic use).
 func (w *StreamingInputWidget) AddSent(json string) {
 	_ = w.sentMessages.Append(json)
+	w.totalSent++
 
 	if count := w.sentMessages.Length(); count > maxStreamMessages {
 		all, err := w.sentMessages.Get()
@@ -131,13 +147,19 @@ func (w *StreamingInputWidget) AddSent(json string) {
 	}
 
 	w.sentList.Refresh()
+	w.updateStatus()
 }
 
 // Clear resets the widget for a new stream.
 func (w *StreamingInputWidget) Clear() {
 	w.messageEntry.SetText("")
+	w.messageEntry.Enable()
 	_ = w.sentMessages.Set([]string{})
+	w.totalSent = 0
 	w.sentList.Refresh()
+	w.sendBtn.Enable()
+	w.finishBtn.Enable()
+	w.statusLabel.SetText("Ready")
 }
 
 // GetCurrentMessage returns the current message text.
@@ -148,6 +170,28 @@ func (w *StreamingInputWidget) GetCurrentMessage() string {
 // SetCurrentMessage sets the current message text.
 func (w *StreamingInputWidget) SetCurrentMessage(text string) {
 	w.messageEntry.SetText(text)
+}
+
+// SetStatus updates the status display.
+func (w *StreamingInputWidget) SetStatus(status string) {
+	w.statusLabel.SetText(status)
+}
+
+// DisableSendControls disables all send controls.
+func (w *StreamingInputWidget) DisableSendControls() {
+	w.sendBtn.Disable()
+	w.finishBtn.Disable()
+	w.messageEntry.Disable()
+}
+
+// updateStatus updates the status with message count.
+func (w *StreamingInputWidget) updateStatus() {
+	sentVisible := w.sentMessages.Length()
+	sentStr := fmt.Sprintf("%d", sentVisible)
+	if w.totalSent > sentVisible {
+		sentStr = fmt.Sprintf("%d of %d", sentVisible, w.totalSent)
+	}
+	w.statusLabel.SetText(fmt.Sprintf("Sent: %s messages", sentStr))
 }
 
 // CreateRenderer implements fyne.Widget.
@@ -178,9 +222,9 @@ func (w *StreamingInputWidget) CreateRenderer() fyne.WidgetRenderer {
 		w.finishBtn,
 	)
 
-	// Full layout: sent messages on top, next message in middle, buttons at bottom
+	// Full layout: status at top, buttons at bottom, split in center
 	content := container.NewBorder(
-		nil,       // top
+		container.NewVBox(w.statusLabel, widget.NewSeparator()), // top (status)
 		buttonBox, // bottom (buttons)
 		nil, nil,  // left, right
 		container.NewVSplit(

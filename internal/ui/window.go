@@ -390,6 +390,16 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		w.bidiPanel.SetOnCloseSend(func() {
 			w.handleBidiStreamClose()
 		})
+		w.bidiPanel.SetOnAbort(func() {
+			w.streamMu.Lock()
+			bidiCancel := w.bidiCancelFunc
+			w.bidiCancelFunc = nil
+			w.bidiStreamHandle = nil
+			w.streamMu.Unlock()
+			if bidiCancel != nil {
+				bidiCancel()
+			}
+		})
 		w.bidiPanel.SetStatus("Ready to start bidirectional stream")
 	} else {
 		// For other method types, use normal request/response panels
@@ -673,21 +683,22 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 //	├─────────────────┼──────────────────────────────┤
 //	│  Workspaces     │      Status Bar              │
 //	└─────────────────┴──────────────────────────────┘
-func (w *MainWindow) SetContent() {
-	// Left side browser area: connection bar + service browser + workspaces
+// buildLeftPanel constructs the left panel with connection bar, service browser, and workspace.
+func (w *MainWindow) buildLeftPanel() *fyne.Container {
 	browserWithWorkspace := container.NewVSplit(
-		w.serviceBrowser, // top (service tree)
-		w.workspacePanel, // bottom (workspace management)
+		w.serviceBrowser,
+		w.workspacePanel,
 	)
-	browserWithWorkspace.SetOffset(0.7) // 70% services, 30% workspaces
+	browserWithWorkspace.SetOffset(0.7)
+	return container.NewBorder(
+		w.connectionBar,
+		nil, nil, nil,
+		browserWithWorkspace,
+	)
+}
 
-	leftPanel := container.NewBorder(
-		w.connectionBar,      // top (connection controls)
-		nil,                  // bottom
-		nil,                  // left
-		nil,                  // right
-		browserWithWorkspace, // center (browser + workspaces)
-	)
+func (w *MainWindow) SetContent() {
+	leftPanel := w.buildLeftPanel()
 
 	// Bottom bar: status on left, theme selector on right
 	bottomBar := container.NewBorder(
@@ -990,11 +1001,7 @@ func (w *MainWindow) switchToBidiPanel() {
 	}
 
 	// Update the window content to show bidi panel instead of request/response panels
-	leftPanel := container.NewBorder(
-		w.connectionBar,
-		nil, nil, nil,
-		w.serviceBrowser,
-	)
+	leftPanel := w.buildLeftPanel()
 
 	// Bottom bar: status on left, theme selector on right
 	bottomBar := container.NewBorder(

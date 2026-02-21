@@ -28,6 +28,7 @@ type BidiStreamPanel struct {
 
 	sendBtn      *widget.Button // Send current message
 	closeSendBtn *widget.Button // Close send stream
+	abortBtn     *widget.Button // Abort entire stream (cancel context)
 
 	// Receive side (right)
 	receivedList     *widget.List        // List of received messages
@@ -46,6 +47,7 @@ type BidiStreamPanel struct {
 	// Callbacks
 	onSend      func(json string) // Callback when Send is clicked
 	onCloseSend func()            // Callback when Close Send is clicked
+	onAbort     func()            // Callback when Abort Stream is clicked
 }
 
 // NewBidiStreamPanel creates a new bidirectional streaming panel.
@@ -72,12 +74,15 @@ func (p *BidiStreamPanel) initializeComponents() {
 			return p.sentMessages.Length()
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("")
+			entry := widget.NewMultiLineEntry()
+			entry.Wrapping = fyne.TextWrapWord
+			entry.Disable()
+			return entry
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			label := obj.(*widget.Label)
+			entry := obj.(*widget.Entry)
 			msg, _ := p.sentMessages.GetValue(id)
-			label.SetText(msg)
+			entry.SetText(msg)
 		},
 	)
 
@@ -109,6 +114,11 @@ func (p *BidiStreamPanel) initializeComponents() {
 		p.handleCloseSend()
 	})
 	p.closeSendBtn.Importance = widget.WarningImportance
+
+	p.abortBtn = widget.NewButton("Abort Stream", func() {
+		p.handleAbort()
+	})
+	p.abortBtn.Importance = widget.DangerImportance
 
 	// Status label
 	p.statusLabel = widget.NewLabel("Ready")
@@ -142,6 +152,7 @@ func (p *BidiStreamPanel) buildLayout() {
 		p.sendBtn,
 		layout.NewSpacer(),
 		p.closeSendBtn,
+		p.abortBtn,
 	)
 
 	leftPanel := container.NewBorder(
@@ -190,6 +201,11 @@ func (p *BidiStreamPanel) SetOnSend(fn func(json string)) {
 // SetOnCloseSend sets the callback for when the send side is closed.
 func (p *BidiStreamPanel) SetOnCloseSend(fn func()) {
 	p.onCloseSend = fn
+}
+
+// SetOnAbort sets the callback for when the stream is aborted.
+func (p *BidiStreamPanel) SetOnAbort(fn func()) {
+	p.onAbort = fn
 }
 
 // handleSend sends the current message and adds it to the sent list.
@@ -243,6 +259,20 @@ func (p *BidiStreamPanel) handleCloseSend() {
 
 	// Update status
 	p.statusLabel.SetText("Send closed")
+}
+
+// handleAbort fully cancels the stream (both send and receive).
+func (p *BidiStreamPanel) handleAbort() {
+	if p.onAbort == nil {
+		return
+	}
+
+	p.onAbort()
+	p.sendBtn.Disable()
+	p.closeSendBtn.Disable()
+	p.abortBtn.Disable()
+	p.messageEntry.Disable()
+	p.statusLabel.SetText("Stream aborted")
 }
 
 // AddSent adds a sent message to the list (for programmatic use).
@@ -320,6 +350,7 @@ func (p *BidiStreamPanel) Clear() {
 
 	p.sendBtn.Enable()
 	p.closeSendBtn.Enable()
+	p.abortBtn.Enable()
 
 	p.statusLabel.SetText("Ready")
 }
@@ -328,6 +359,7 @@ func (p *BidiStreamPanel) Clear() {
 func (p *BidiStreamPanel) DisableSendControls() {
 	p.sendBtn.Disable()
 	p.closeSendBtn.Disable()
+	p.abortBtn.Disable()
 	p.messageEntry.Disable()
 }
 
