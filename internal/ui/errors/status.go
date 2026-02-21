@@ -1,33 +1,27 @@
 package errors
 
 import (
-	"image/color"
-
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/shhac/grotto/internal/model"
 )
 
-// Status indicator colors
-var (
-	colorDisconnected = color.RGBA{128, 128, 128, 255} // Gray
-	colorConnecting   = color.RGBA{255, 193, 7, 255}   // Amber
-	colorConnected    = color.RGBA{76, 175, 80, 255}   // Green
-	colorError        = color.RGBA{244, 67, 54, 255}   // Red
-)
-
-// StatusBar displays the current connection status with a colored indicator dot.
-// Format: "● Connected to api.example.com:50051"
+// StatusBar displays the current connection status with a shape-changing icon indicator.
+// Each state uses a distinct icon shape for accessibility (not color-only):
+//   - Disconnected: empty radio button (circle outline)
+//   - Connecting: view-refresh icon (circular arrows)
+//   - Connected: confirm icon (checkmark)
+//   - Error: error icon (X shape)
 type StatusBar struct {
 	widget.BaseWidget
 
 	state       *model.ConnectionUIState
 	statusLabel *widget.Label
-	indicator   *canvas.Circle
+	indicator   *widget.Icon
 }
 
 // NewStatusBar creates a new status bar bound to the given connection state.
@@ -35,14 +29,9 @@ func NewStatusBar(state *model.ConnectionUIState) *StatusBar {
 	s := &StatusBar{
 		state:       state,
 		statusLabel: widget.NewLabel("Disconnected"),
-		indicator:   canvas.NewCircle(colorDisconnected),
+		indicator:   widget.NewIcon(theme.RadioButtonIcon()),
 	}
 	s.ExtendBaseWidget(s)
-
-	// Set initial indicator size
-	s.indicator.Resize(fyne.NewSize(12, 12))
-	s.indicator.StrokeWidth = 0
-	s.indicator.StrokeColor = color.Transparent
 
 	// Listen to state changes
 	state.State.AddListener(binding.NewDataListener(s.updateStatus))
@@ -61,7 +50,7 @@ func (s *StatusBar) updateStatus() {
 
 	switch stateStr {
 	case "disconnected":
-		s.indicator.FillColor = colorDisconnected
+		s.indicator.SetResource(theme.RadioButtonIcon())
 		if message == "" {
 			s.statusLabel.SetText("Disconnected")
 		} else {
@@ -69,7 +58,7 @@ func (s *StatusBar) updateStatus() {
 		}
 
 	case "connecting":
-		s.indicator.FillColor = colorConnecting
+		s.indicator.SetResource(theme.ViewRefreshIcon())
 		if message == "" {
 			s.statusLabel.SetText("Connecting...")
 		} else {
@@ -77,7 +66,7 @@ func (s *StatusBar) updateStatus() {
 		}
 
 	case "connected":
-		s.indicator.FillColor = colorConnected
+		s.indicator.SetResource(theme.ConfirmIcon())
 		if message == "" {
 			s.statusLabel.SetText("Connected")
 		} else {
@@ -85,7 +74,7 @@ func (s *StatusBar) updateStatus() {
 		}
 
 	case "error":
-		s.indicator.FillColor = colorError
+		s.indicator.SetResource(theme.ErrorIcon())
 		if message == "" {
 			s.statusLabel.SetText("Connection Error")
 		} else {
@@ -93,17 +82,16 @@ func (s *StatusBar) updateStatus() {
 		}
 
 	default:
-		s.indicator.FillColor = colorDisconnected
+		s.indicator.SetResource(theme.RadioButtonIcon())
 		s.statusLabel.SetText("Unknown state")
 	}
 
-	s.indicator.Refresh()
 	s.statusLabel.Refresh()
 }
 
 // CreateRenderer implements fyne.Widget.
 func (s *StatusBar) CreateRenderer() fyne.WidgetRenderer {
-	// Create container with indicator dot and status label
+	// Create container with indicator icon and status label
 	statusContainer := container.NewHBox(
 		s.indicator,
 		s.statusLabel,

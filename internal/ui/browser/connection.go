@@ -164,6 +164,11 @@ func (c *ConnectionBar) FocusAddress() {
 	c.window.Canvas().Focus(c.addressEntry)
 }
 
+// TriggerConnect programmatically triggers the connect/disconnect action (for keyboard shortcut).
+func (c *ConnectionBar) TriggerConnect() {
+	c.handleButtonClick()
+}
+
 // SetAddress sets the address in the entry field
 func (c *ConnectionBar) SetAddress(address string) {
 	c.addressEntry.SetText(address)

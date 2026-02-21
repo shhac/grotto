@@ -72,6 +72,15 @@ func (w *MainWindow) setupKeyboardShortcuts() {
 		w.requestPanel.SwitchToFormMode()
 	})
 
+	// Cmd+Shift+C: Toggle connect/disconnect
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyC,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: toggle connection")
+		w.toggleConnection()
+	})
+
 	// Escape: Cancel current operation (for streaming)
 	canvas.SetOnTypedKey(func(key *fyne.KeyEvent) {
 		if key.Name == fyne.KeyEscape {

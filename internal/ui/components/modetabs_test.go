@@ -18,9 +18,8 @@ func TestNewModeTabs(t *testing.T) {
 	modeTabs := NewModeTabs(textContent, formContent)
 
 	assert.NotNil(t, modeTabs, "ModeTabs should not be nil")
-	assert.NotNil(t, modeTabs.tabs, "tabs should be initialized")
-	assert.NotNil(t, modeTabs.textTab, "textTab should be initialized")
-	assert.NotNil(t, modeTabs.formTab, "formTab should be initialized")
+	assert.NotNil(t, modeTabs.modeSelect, "modeSelect should be initialized")
+	assert.NotNil(t, modeTabs.contentStack, "contentStack should be initialized")
 	assert.Equal(t, textContent, modeTabs.textContent)
 	assert.Equal(t, formContent, modeTabs.formContent)
 }
@@ -34,7 +33,7 @@ func TestModeTabs_GetMode_DefaultsToText(t *testing.T) {
 
 	modeTabs := NewModeTabs(textContent, formContent)
 
-	// Default mode should be "text" (first tab)
+	// Default mode should be "text" (first option)
 	mode := modeTabs.GetMode()
 	assert.Equal(t, "text", mode, "default mode should be text")
 }
@@ -151,7 +150,7 @@ func TestModeTabs_OnModeChange_NotCalledWhenAlreadyOnMode(t *testing.T) {
 	assert.Equal(t, 1, callbackCount, "callback should not be called again")
 }
 
-func TestModeTabs_GetTabMode(t *testing.T) {
+func TestModeTabs_ContentSwitching(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -160,34 +159,16 @@ func TestModeTabs_GetTabMode(t *testing.T) {
 
 	modeTabs := NewModeTabs(textContent, formContent)
 
-	tests := []struct {
-		name     string
-		tab      string
-		expected string
-	}{
-		{
-			name:     "text tab returns text",
-			tab:      "textTab",
-			expected: "text",
-		},
-		{
-			name:     "form tab returns form",
-			tab:      "formTab",
-			expected: "form",
-		},
-	}
+	// Default: text content visible
+	assert.Equal(t, textContent, modeTabs.contentStack.Objects[0])
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var mode string
-			if tt.tab == "textTab" {
-				mode = modeTabs.getTabMode(modeTabs.textTab)
-			} else {
-				mode = modeTabs.getTabMode(modeTabs.formTab)
-			}
-			assert.Equal(t, tt.expected, mode)
-		})
-	}
+	// Switch to form
+	modeTabs.SetMode("form")
+	assert.Equal(t, formContent, modeTabs.contentStack.Objects[0])
+
+	// Switch back to text
+	modeTabs.SetMode("text")
+	assert.Equal(t, textContent, modeTabs.contentStack.Objects[0])
 }
 
 func TestModeTabs_CreateRenderer(t *testing.T) {
@@ -217,7 +198,7 @@ func TestModeTabs_MinSize(t *testing.T) {
 	assert.Greater(t, minSize.Height, float32(0), "min height should be positive")
 }
 
-func TestModeTabs_TabLabels(t *testing.T) {
+func TestModeTabs_RadioGroupLabels(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -226,9 +207,9 @@ func TestModeTabs_TabLabels(t *testing.T) {
 
 	modeTabs := NewModeTabs(textContent, formContent)
 
-	// Verify tab labels are correct
-	assert.Equal(t, "Text", modeTabs.textTab.Text, "text tab should be labeled 'Text'")
-	assert.Equal(t, "Form", modeTabs.formTab.Text, "form tab should be labeled 'Form'")
+	// Verify radio options are correct
+	assert.Equal(t, []string{"Text", "Form"}, modeTabs.modeSelect.Options)
+	assert.True(t, modeTabs.modeSelect.Horizontal, "radio group should be horizontal")
 }
 
 func TestModeTabs_InvalidMode(t *testing.T) {

@@ -80,6 +80,13 @@ func (b *ServiceBrowser) Refresh() {
 	b.tree.Refresh()
 }
 
+// FocusTree moves keyboard focus to the service tree widget.
+func (b *ServiceBrowser) FocusTree() {
+	if c := fyne.CurrentApp().Driver().CanvasForObject(b.tree); c != nil {
+		c.Focus(b.tree)
+	}
+}
+
 // CreateRenderer creates the renderer for this widget
 func (b *ServiceBrowser) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(b.content)

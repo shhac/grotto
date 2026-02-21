@@ -350,6 +350,13 @@ func (p *RequestPanel) SwitchToFormMode() {
 	p.modeTabs.SetMode("form")
 }
 
+// FocusEditor moves keyboard focus to the text editor widget.
+func (p *RequestPanel) FocusEditor() {
+	if c := fyne.CurrentApp().Driver().CanvasForObject(p.textEditor); c != nil {
+		c.Focus(p.textEditor)
+	}
+}
+
 // CreateRenderer returns the widget renderer
 func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 	// Metadata section UI

@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/shhac/grotto/internal/domain"
@@ -258,9 +259,10 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			slog.Int("service_count", len(services)),
 		)
 
-		// Refresh the service browser (must be on main thread in Fyne 2.6+)
+		// Refresh the service browser and focus it (must be on main thread in Fyne 2.6+)
 		fyne.Do(func() {
 			w.serviceBrowser.Refresh()
+			w.serviceBrowser.FocusTree()
 		})
 	}()
 }
@@ -417,6 +419,9 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		_ = w.state.Response.Error.Set("")
 		_ = w.state.Response.Duration.Set("")
 		w.responsePanel.ClearResponseMetadata()
+
+		// Focus the request editor for immediate typing
+		w.requestPanel.FocusEditor()
 	}
 
 	// Log method type for debugging
@@ -1343,16 +1348,52 @@ func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
 	w.logger.Info("history entry loaded into request panel - ready to send")
 }
 
-// setupMainMenu creates and sets the application's main menu
+// toggleConnection toggles between connected and disconnected states.
+func (w *MainWindow) toggleConnection() {
+	state, _ := w.connState.State.Get()
+	switch state {
+	case "disconnected", "error":
+		w.connectionBar.TriggerConnect()
+	case "connected":
+		w.handleDisconnect()
+	}
+}
+
+// setupMainMenu creates and sets the application's main menu.
+// Menu items that have keyboard shortcuts show the accelerator hint via MenuItem.Shortcut.
+// Note: setting Shortcut on a MenuItem only displays the hint — shortcuts are still
+// registered globally via canvas.AddShortcut in setupKeyboardShortcuts.
 func (w *MainWindow) setupMainMenu() {
-	// File menu - workspace operations
+	// File menu - workspace and connection operations
+	saveItem := fyne.NewMenuItem("Save Workspace", func() {
+		w.workspacePanel.TriggerSave()
+	})
+	saveItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyS,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
+	loadItem := fyne.NewMenuItem("Load Workspace", func() {
+		w.workspacePanel.TriggerLoad()
+	})
+	loadItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyO,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
+	connectItem := fyne.NewMenuItem("Connect / Disconnect", func() {
+		w.toggleConnection()
+	})
+	connectItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyC,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}
+
 	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("Save Workspace", func() {
-			w.workspacePanel.TriggerSave()
-		}),
-		fyne.NewMenuItem("Load Workspace", func() {
-			w.workspacePanel.TriggerLoad()
-		}),
+		saveItem,
+		loadItem,
+		fyne.NewMenuItemSeparator(),
+		connectItem,
 		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Clear History", func() {
 			w.handleClearHistory()
@@ -1360,27 +1401,49 @@ func (w *MainWindow) setupMainMenu() {
 	)
 
 	// Edit menu - clear operations
+	clearResponseItem := fyne.NewMenuItem("Clear Response", func() {
+		w.handleClearResponse()
+	})
+	clearResponseItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyL,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
 	editMenu := fyne.NewMenu("Edit",
 		fyne.NewMenuItem("Clear Request", func() {
 			w.handleClearRequest()
 		}),
-		fyne.NewMenuItem("Clear Response", func() {
-			w.handleClearResponse()
-		}),
+		clearResponseItem,
 	)
 
 	// View menu - mode switching
+	textModeItem := fyne.NewMenuItem("Text Mode", func() {
+		w.requestPanel.SwitchToTextMode()
+	})
+	textModeItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.Key1,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
+	formModeItem := fyne.NewMenuItem("Form Mode", func() {
+		w.requestPanel.SwitchToFormMode()
+	})
+	formModeItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.Key2,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
 	viewMenu := fyne.NewMenu("View",
-		fyne.NewMenuItem("Text Mode", func() {
-			w.requestPanel.SwitchToTextMode()
-		}),
-		fyne.NewMenuItem("Form Mode", func() {
-			w.requestPanel.SwitchToFormMode()
-		}),
+		textModeItem,
+		formModeItem,
 	)
 
-	// Help menu - about dialog
+	// Help menu - shortcuts reference and about dialog
 	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("Keyboard Shortcuts", func() {
+			ShowShortcutDialog(w.window)
+		}),
+		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("About Grotto", func() {
 			ShowAboutDialog(w.window)
 		}),
