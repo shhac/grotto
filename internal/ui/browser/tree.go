@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
@@ -64,7 +65,12 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	b.placeholder.TextStyle = fyne.TextStyle{Italic: true}
 
 	// Stack container: shows placeholder when empty, tree when populated
-	b.content = container.NewStack(container.NewCenter(b.placeholder))
+	// Use Border with spacers for vertical centering — NewCenter gives minimum width
+	// which breaks word-wrapping labels (renders one char per line).
+	placeholderCentered := container.NewBorder(nil, nil, nil, nil,
+		container.NewVBox(layout.NewSpacer(), b.placeholder, layout.NewSpacer()),
+	)
+	b.content = container.NewStack(placeholderCentered)
 
 	b.ExtendBaseWidget(b)
 	return b
@@ -262,7 +268,11 @@ func (b *ServiceBrowser) rebuildIndex() {
 	// (content may be nil during initial construction)
 	if b.content != nil {
 		if len(uids) == 0 {
-			b.content.Objects = []fyne.CanvasObject{container.NewCenter(b.placeholder)}
+			b.content.Objects = []fyne.CanvasObject{
+				container.NewBorder(nil, nil, nil, nil,
+					container.NewVBox(layout.NewSpacer(), b.placeholder, layout.NewSpacer()),
+				),
+			}
 		} else {
 			b.content.Objects = []fyne.CanvasObject{b.themedTree}
 		}
