@@ -21,7 +21,9 @@ func ShowAboutDialog(parent fyne.Window) {
 		widget.NewSeparator(),
 		widget.NewLabel("Built with Fyne and Go"),
 	)
-	dialog.ShowCustom("About Grotto", "Close", content, parent)
+	d := dialog.NewCustom("About Grotto", "Close", content, parent)
+	d.Resize(fyne.NewSize(400, 300))
+	d.Show()
 }
 
 // ShowShortcutDialog displays a reference of all keyboard shortcuts.
@@ -44,5 +46,7 @@ func ShowShortcutDialog(parent fyne.Window) {
 		grid.Add(widget.NewLabelWithStyle(s.key, fyne.TextAlignTrailing, fyne.TextStyle{Monospace: true}))
 	}
 
-	dialog.ShowCustom("Keyboard Shortcuts", "Close", container.NewVScroll(grid), parent)
+	d := dialog.NewCustom("Keyboard Shortcuts", "Close", container.NewVScroll(grid), parent)
+	d.Resize(fyne.NewSize(400, 400))
+	d.Show()
 }

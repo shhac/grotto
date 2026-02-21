@@ -274,5 +274,5 @@ func (p *ResponsePanel) CreateRenderer() fyne.WidgetRenderer {
 
 // MinSize implements fyne.Widget (optional, provides reasonable defaults).
 func (p *ResponsePanel) MinSize() fyne.Size {
-	return fyne.NewSize(400, 300)
+	return fyne.NewSize(400, 100)
 }

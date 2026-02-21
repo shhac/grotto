@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/model"
 	"github.com/shhac/grotto/internal/ui/components"
@@ -388,12 +387,6 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 	p.metadataTab = container.NewTabItem("Request Metadata", p.metadataContent)
 	p.topLevelTabs = container.NewAppTabs(p.bodyTab, p.metadataTab)
 
-	// Send button aligned to right (for unary/server streaming)
-	sendBox := container.NewHBox(
-		layout.NewSpacer(),
-		p.sendBtn,
-	)
-
 	// Normal layout (unary/server streaming) - now uses top-level tabs
 	normalLayout := p.topLevelTabs
 
@@ -411,26 +404,25 @@ func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
 		p.mainContainer.Objects = []fyne.CanvasObject{normalLayout}
 	}
 
+	// Header row: method label on left, send button on right
+	// Hide send button in streaming mode (streaming widget has its own controls)
+	if p.isStreaming {
+		p.sendBtn.Hide()
+	} else {
+		p.sendBtn.Show()
+	}
+	headerRow := container.NewBorder(nil, nil, nil, p.sendBtn, p.methodLabel)
+
 	// Full layout
 	content := container.NewBorder(
 		container.NewVBox(
-			p.methodLabel,
+			headerRow,
 			widget.NewSeparator(),
 		),
-		container.NewVBox(
-			widget.NewSeparator(),
-			sendBox,
-		),
+		nil,
 		nil, nil,
 		p.mainContainer,
 	)
-
-	// Update visibility of sendBox based on streaming mode
-	if p.isStreaming {
-		sendBox.Hide()
-	} else {
-		sendBox.Show()
-	}
 
 	return widget.NewSimpleRenderer(content)
 }

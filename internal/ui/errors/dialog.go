@@ -34,25 +34,28 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 		return
 	}
 
-	// Build dialog content
-	content := container.NewVBox(
-		widget.NewLabel(uiErr.Message),
-	)
+	// Build dialog content with word-wrapping labels to prevent horizontal expansion
+	msgLabel := widget.NewLabel(uiErr.Message)
+	msgLabel.Wrapping = fyne.TextWrapWord
+	content := container.NewVBox(msgLabel)
 
 	// Add recovery suggestions if available
 	if len(uiErr.Recovery) > 0 {
 		content.Add(widget.NewSeparator())
 		content.Add(widget.NewLabel("You can:"))
 		for _, suggestion := range uiErr.Recovery {
-			content.Add(widget.NewLabel("• " + suggestion))
+			lbl := widget.NewLabel("• " + suggestion)
+			lbl.Wrapping = fyne.TextWrapWord
+			content.Add(lbl)
 		}
 	}
 
 	// Add expandable technical details if available
 	if uiErr.Details != "" {
+		detailsLabel := widget.NewLabel(uiErr.Details)
+		detailsLabel.Wrapping = fyne.TextWrapWord
 		accordion := widget.NewAccordion(
-			widget.NewAccordionItem("Technical Details",
-				widget.NewLabel(uiErr.Details)),
+			widget.NewAccordionItem("Technical Details", detailsLabel),
 		)
 		content.Add(accordion)
 	}
@@ -66,7 +69,7 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 		}
 	}
 
-	// Create appropriate dialog type
+	// Create appropriate dialog type with explicit size to prevent window resizing
 	if hasRetry {
 		// Create dialog with retry button
 		d := dialog.NewCustomConfirm(
@@ -81,10 +84,12 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 			},
 			window,
 		)
+		d.Resize(fyne.NewSize(500, 400))
 		d.Show()
 	} else {
 		// Create simple custom dialog
 		d := dialog.NewCustom(uiErr.Title, "Close", content, window)
+		d.Resize(fyne.NewSize(500, 400))
 		d.Show()
 	}
 }

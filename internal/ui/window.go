@@ -73,8 +73,9 @@ type MainWindow struct {
 	serverStreamCancel context.CancelFunc
 	unaryCancel        context.CancelFunc
 
-	// Layout mode tracking (avoid unnecessary rebuilds)
-	inBidiMode bool
+	// Layout state
+	inBidiMode   bool              // avoid unnecessary rebuilds
+	contentSplit *container.Split   // request/response vertical split (stored for offset changes)
 }
 
 // NewMainWindow creates a new main window with the application layout.
@@ -522,6 +523,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 					w.handleSendRequest(jsonStr, metadataMap)
 				})
 				w.responsePanel.ClearResponseMetadata()
+				w.expandResponsePanel()
 			})
 
 			// Also set error in response panel for inline visibility
@@ -555,6 +557,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		_ = w.state.Response.Error.Set("")
 		fyne.Do(func() {
 			w.responsePanel.SetResponseMetadata(respMetadataMap)
+			w.expandResponsePanel()
 		})
 
 		w.logger.Info("RPC completed successfully",
@@ -581,6 +584,7 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 
 	// Switch to streaming mode and prepare UI
 	w.responsePanel.SetStreaming(true)
+	w.expandResponsePanel()
 	streamWidget := w.responsePanel.StreamingWidget()
 	streamWidget.Clear()
 	streamWidget.SetStatus("Starting stream...")
@@ -717,15 +721,17 @@ func (w *MainWindow) SetContent() {
 	)
 
 	// Right side: vertical split with request, response, and bottom bar
+	w.contentSplit = container.NewVSplit(
+		w.requestPanel,  // top (gets most space initially)
+		w.responsePanel, // bottom (minimized until first response)
+	)
+	w.contentSplit.SetOffset(0.8) // 80% request, 20% response
 	rightPanel := container.NewBorder(
 		nil,       // top
 		bottomBar, // bottom (status bar + theme selector)
 		nil,       // left
 		nil,       // right
-		container.NewVSplit(
-			w.requestPanel,  // top half
-			w.responsePanel, // bottom half
-		),
+		w.contentSplit,
 	)
 
 	// Main layout: horizontal split with browser on left, panels on right
@@ -743,6 +749,13 @@ func (w *MainWindow) SetContent() {
 // Window returns the underlying Fyne window.
 func (w *MainWindow) Window() fyne.Window {
 	return w.window
+}
+
+// expandResponsePanel sets the content split to give equal space to request/response.
+func (w *MainWindow) expandResponsePanel() {
+	if w.contentSplit != nil {
+		w.contentSplit.SetOffset(0.5)
+	}
 }
 
 // handleClientStreamSend sends a single message in a client streaming RPC.
@@ -915,6 +928,9 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		_ = w.state.Response.TextData.Set(respJSON)
 		_ = w.state.Response.Duration.Set(fmt.Sprintf("Duration: %v", duration.Round(time.Millisecond)))
 		_ = w.state.Response.Error.Set("")
+		fyne.Do(func() {
+			w.expandResponsePanel()
+		})
 
 		w.logger.Info("client stream completed successfully",
 			slog.String("method", methodName),
