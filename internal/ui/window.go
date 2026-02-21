@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -514,10 +515,9 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		}
 
 		// Pretty-print JSON response
-		var prettyJSON interface{}
-		if err := json.Unmarshal([]byte(respJSON), &prettyJSON); err == nil {
-			prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-			respJSON = string(prettyBytes)
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, []byte(respJSON), "", "  "); err == nil {
+			respJSON = buf.String()
 		}
 
 		// Convert metadata.MD to map[string]string for display
@@ -612,10 +612,9 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 				messageCount++
 
 				// Pretty-print JSON message
-				var prettyJSON interface{}
-				if err := json.Unmarshal([]byte(jsonMsg), &prettyJSON); err == nil {
-					prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-					jsonMsg = string(prettyBytes)
+				var buf bytes.Buffer
+				if err := json.Indent(&buf, []byte(jsonMsg), "", "  "); err == nil {
+					jsonMsg = buf.String()
 				}
 
 				// Add message to UI (must be on main thread)
@@ -887,10 +886,9 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		}
 
 		// Pretty-print JSON response
-		var prettyJSON interface{}
-		if err := json.Unmarshal([]byte(respJSON), &prettyJSON); err == nil {
-			prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-			respJSON = string(prettyBytes)
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, []byte(respJSON), "", "  "); err == nil {
+			respJSON = buf.String()
 		}
 
 		// Update response
@@ -1179,10 +1177,9 @@ func (w *MainWindow) receiveBidiMessages() {
 		messageCount++
 
 		// Pretty-print JSON message
-		var prettyJSON interface{}
-		if err := json.Unmarshal([]byte(jsonMsg), &prettyJSON); err == nil {
-			prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-			jsonMsg = string(prettyBytes)
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, []byte(jsonMsg), "", "  "); err == nil {
+			jsonMsg = buf.String()
 		}
 
 		// Add message to UI (must be on main thread)

@@ -13,9 +13,10 @@ import (
 
 // ReflectionClient wraps gRPC server reflection functionality
 type ReflectionClient struct {
-	conn   *grpc.ClientConn
-	client *grpcreflect.Client
-	logger *slog.Logger
+	conn         *grpc.ClientConn
+	client       *grpcreflect.Client
+	logger       *slog.Logger
+	serviceCache map[string]*desc.ServiceDescriptor
 }
 
 // NewReflectionClient creates a new reflection client for the given connection
@@ -24,9 +25,10 @@ func NewReflectionClient(conn *grpc.ClientConn, logger *slog.Logger) *Reflection
 	refClient := grpcreflect.NewClientAuto(context.Background(), conn)
 
 	return &ReflectionClient{
-		conn:   conn,
-		client: refClient,
-		logger: logger,
+		conn:         conn,
+		client:       refClient,
+		logger:       logger,
+		serviceCache: make(map[string]*desc.ServiceDescriptor),
 	}
 }
 
@@ -57,6 +59,7 @@ func (r *ReflectionClient) ListServices(ctx context.Context) ([]domain.Service, 
 			continue
 		}
 
+		r.serviceCache[serviceName] = serviceDesc
 		service := r.convertService(serviceDesc)
 		services = append(services, service)
 	}
@@ -70,9 +73,14 @@ func (r *ReflectionClient) ListServices(ctx context.Context) ([]domain.Service, 
 
 // GetMethodDescriptor returns the descriptor for a specific method
 func (r *ReflectionClient) GetMethodDescriptor(serviceName, methodName string) (*desc.MethodDescriptor, error) {
-	serviceDesc, err := r.client.ResolveService(serviceName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve service %s: %w", serviceName, err)
+	serviceDesc, ok := r.serviceCache[serviceName]
+	if !ok {
+		var err error
+		serviceDesc, err = r.client.ResolveService(serviceName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve service %s: %w", serviceName, err)
+		}
+		r.serviceCache[serviceName] = serviceDesc
 	}
 
 	methodDesc := serviceDesc.FindMethodByName(methodName)
@@ -86,6 +94,7 @@ func (r *ReflectionClient) GetMethodDescriptor(serviceName, methodName string) (
 // Close closes the reflection client
 func (r *ReflectionClient) Close() {
 	r.client.Reset()
+	r.serviceCache = nil
 }
 
 // convertService converts a protoreflect ServiceDescriptor to domain.Service

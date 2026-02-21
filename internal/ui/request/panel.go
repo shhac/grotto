@@ -1,6 +1,7 @@
 package request
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 
@@ -266,10 +267,9 @@ func (p *RequestPanel) handleSend() {
 	jsonText, _ := p.state.TextData.Get()
 
 	// Pretty-print JSON
-	var prettyJSON interface{}
-	if err := json.Unmarshal([]byte(jsonText), &prettyJSON); err == nil {
-		prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-		jsonText = string(prettyBytes)
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(jsonText), "", "  "); err == nil {
+		jsonText = buf.String()
 	}
 
 	// Build metadata map
@@ -285,10 +285,9 @@ func (p *RequestPanel) handleStreamSend(jsonText string) {
 	}
 
 	// Pretty-print JSON
-	var prettyJSON interface{}
-	if err := json.Unmarshal([]byte(jsonText), &prettyJSON); err == nil {
-		prettyBytes, _ := json.MarshalIndent(prettyJSON, "", "  ")
-		jsonText = string(prettyBytes)
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(jsonText), "", "  "); err == nil {
+		jsonText = buf.String()
 	}
 
 	// Build metadata map

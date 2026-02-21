@@ -21,6 +21,10 @@ type ServiceBrowser struct {
 	themedTree    fyne.CanvasObject // tree wrapped with custom theme
 	services      binding.UntypedList // []domain.Service
 
+	// O(1) service lookup index, rebuilt when services binding changes
+	serviceIndex map[string]domain.Service
+	serviceUIDs  []string
+
 	// Callbacks
 	onMethodSelect func(service domain.Service, method domain.Method)
 }
@@ -28,8 +32,14 @@ type ServiceBrowser struct {
 // NewServiceBrowser creates a new service browser widget
 func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	b := &ServiceBrowser{
-		services: services,
+		services:     services,
+		serviceIndex: make(map[string]domain.Service),
 	}
+
+	// Rebuild index when services change
+	services.AddListener(binding.NewDataListener(func() {
+		b.rebuildIndex()
+	}))
 
 	b.tree = widget.NewTree(
 		b.childUIDs,
@@ -210,20 +220,31 @@ func (b *ServiceBrowser) onTreeSelected(uid string) {
 	}
 }
 
-// getServiceUIDs returns the UIDs of all services
-func (b *ServiceBrowser) getServiceUIDs() []string {
+// rebuildIndex rebuilds the O(1) service lookup index from the binding.
+// Called via DataListener when the services binding changes.
+func (b *ServiceBrowser) rebuildIndex() {
 	serviceList, err := b.services.Get()
 	if err != nil {
-		return []string{}
+		b.serviceIndex = make(map[string]domain.Service)
+		b.serviceUIDs = nil
+		return
 	}
 
-	var uids []string
+	index := make(map[string]domain.Service, len(serviceList))
+	uids := make([]string, 0, len(serviceList))
 	for _, item := range serviceList {
 		if service, ok := item.(domain.Service); ok {
+			index[service.FullName] = service
 			uids = append(uids, service.FullName)
 		}
 	}
-	return uids
+	b.serviceIndex = index
+	b.serviceUIDs = uids
+}
+
+// getServiceUIDs returns the UIDs of all services
+func (b *ServiceBrowser) getServiceUIDs() []string {
+	return b.serviceUIDs
 }
 
 // getMethodUIDs returns the UIDs of all methods for a given service
@@ -241,19 +262,10 @@ func (b *ServiceBrowser) getMethodUIDs(serviceName string) []string {
 	return uids
 }
 
-// findService finds a service by its full name
+// findService finds a service by its full name using the O(1) index
 func (b *ServiceBrowser) findService(fullName string) *domain.Service {
-	serviceList, err := b.services.Get()
-	if err != nil {
-		return nil
-	}
-
-	for _, item := range serviceList {
-		if service, ok := item.(domain.Service); ok {
-			if service.FullName == fullName {
-				return &service
-			}
-		}
+	if service, ok := b.serviceIndex[fullName]; ok {
+		return &service
 	}
 	return nil
 }
