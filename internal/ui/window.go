@@ -725,7 +725,7 @@ func (w *MainWindow) SetContent() {
 		w.requestPanel,  // top (gets most space initially)
 		w.responsePanel, // bottom (minimized until first response)
 	)
-	w.contentSplit.SetOffset(0.8) // 80% request, 20% response
+	w.contentSplit.SetOffset(0.75) // 75% request, 25% response
 	rightPanel := container.NewBorder(
 		nil,       // top
 		bottomBar, // bottom (status bar + theme selector)

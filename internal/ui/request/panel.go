@@ -212,6 +212,9 @@ func (p *RequestPanel) SetClientStreaming(streaming bool) {
 	if streaming {
 		// Clear the streaming widget for new stream
 		p.streamingInput.Clear()
+		p.sendBtn.Hide()
+	} else {
+		p.sendBtn.Show()
 	}
 	p.Refresh()
 }
