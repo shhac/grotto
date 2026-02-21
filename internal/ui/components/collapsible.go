@@ -7,7 +7,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// TreeSection is a collapsible section with tree-style ▶/▼ disclosure icons
+// TreeSection is a collapsible section with filled triangle ▶/▼ disclosure icons
 // that indicate nested structure, rather than accordion-style ⌃/⌄ icons.
 type TreeSection struct {
 	widget.BaseWidget
@@ -35,9 +35,9 @@ func newTreeSection(title string, content fyne.CanvasObject, expanded bool) *Tre
 	}
 
 	if expanded {
-		ts.icon = widget.NewIcon(theme.MoveDownIcon())
+		ts.icon = widget.NewIcon(theme.MenuDropDownIcon())
 	} else {
-		ts.icon = widget.NewIcon(theme.NavigateNextIcon())
+		ts.icon = widget.NewIcon(theme.MenuExpandIcon())
 	}
 
 	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -68,7 +68,7 @@ func (t *TreeSection) Toggle() {
 // Open expands the section.
 func (t *TreeSection) Open() {
 	t.expanded = true
-	t.icon.SetResource(theme.MoveDownIcon())
+	t.icon.SetResource(theme.MenuDropDownIcon())
 	t.content.Show()
 	t.Refresh()
 }
@@ -76,7 +76,7 @@ func (t *TreeSection) Open() {
 // Close collapses the section.
 func (t *TreeSection) Close() {
 	t.expanded = false
-	t.icon.SetResource(theme.NavigateNextIcon())
+	t.icon.SetResource(theme.MenuExpandIcon())
 	t.content.Hide()
 	t.Refresh()
 }
