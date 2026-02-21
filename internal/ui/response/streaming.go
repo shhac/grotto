@@ -125,10 +125,7 @@ func (w *StreamingMessagesWidget) SetStatus(status string) {
 
 // Clear removes all messages from the list.
 func (w *StreamingMessagesWidget) Clear() {
-	// Clear all items from the list
-	for w.messages.Length() > 0 {
-		_ = w.messages.Set([]interface{}{})
-	}
+	_ = w.messages.Set([]interface{}{})
 	w.messageList.Refresh()
 	w.statusLabel.SetText("Ready")
 }

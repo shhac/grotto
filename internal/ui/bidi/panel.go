@@ -263,10 +263,10 @@ func (p *BidiStreamPanel) Clear() {
 	p.messageEntry.SetText("")
 	p.messageEntry.Enable()
 
-	p.sentMessages = binding.NewStringList()
+	_ = p.sentMessages.Set([]string{})
 	p.sentList.Refresh()
 
-	p.receivedMessages = binding.NewUntypedList()
+	_ = p.receivedMessages.Set([]interface{}{})
 	p.receivedList.Refresh()
 
 	p.sendBtn.Enable()

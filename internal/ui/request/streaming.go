@@ -115,7 +115,7 @@ func (w *StreamingInputWidget) AddSent(json string) {
 // Clear resets the widget for a new stream.
 func (w *StreamingInputWidget) Clear() {
 	w.messageEntry.SetText("")
-	w.sentMessages = binding.NewStringList()
+	_ = w.sentMessages.Set([]string{})
 	w.sentList.Refresh()
 }
 
