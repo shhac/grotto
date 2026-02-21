@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -75,6 +76,8 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		if len(options) > searchableEnumThreshold {
 			// Large enum: use SelectEntry with type-to-filter
 			selEntry := widget.NewSelectEntry(options)
+			selEntry.Wrapping = fyne.TextWrapOff
+			selEntry.Scroll = container.ScrollNone
 			selEntry.SetPlaceHolder("Type to filter...")
 			allOptions := options // capture full list for filtering
 			selEntry.OnChanged = func(text string) {
@@ -176,7 +179,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -202,7 +205,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -228,7 +231,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -254,7 +257,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -280,7 +283,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.FloatKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -306,7 +309,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.DoubleKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -332,7 +335,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.StringKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("Enter text")
 		fw.Widget = entry
 		fw.GetValue = func() interface{} { return entry.Text }
@@ -345,7 +348,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 
 	case protoreflect.BytesKind:
 		// Entry with base64 encoding hint
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("Base64 encoded bytes")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -381,7 +384,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		msgType := fd.Message().FullName()
 		switch msgType {
 		case "google.protobuf.Timestamp":
-			entry := widget.NewEntry()
+			entry := newFormEntry()
 			entry.SetPlaceHolder("RFC3339 format (e.g., 2024-01-15T10:30:00Z)")
 			entry.Validator = func(s string) error {
 				if s == "" {
@@ -403,7 +406,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 			fw.Validate = func() error { return entry.Validate() }
 
 		case "google.protobuf.Duration":
-			entry := widget.NewEntry()
+			entry := newFormEntry()
 			entry.SetPlaceHolder("Duration format (e.g., 5m30s)")
 			entry.Validator = func(s string) error {
 				if s == "" {
@@ -479,7 +482,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 
 	default:
 		// Unsupported type - shouldn't happen with proto reflection
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder(fmt.Sprintf("Unsupported type: %s", fd.Kind()))
 		entry.Disable()
 		fw.Widget = entry
@@ -489,6 +492,16 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 	}
 
 	return fw
+}
+
+// newFormEntry creates an Entry with its internal scroll disabled so that
+// mouse-wheel events propagate to the outer form VScroll instead of being
+// silently consumed by the Entry's embedded Scroll widget.
+func newFormEntry() *widget.Entry {
+	e := newFormEntry()
+	e.Wrapping = fyne.TextWrapOff
+	e.Scroll = container.ScrollNone
+	return e
 }
 
 // formatFieldLabel converts snake_case field names to Title Case labels

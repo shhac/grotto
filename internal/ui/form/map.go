@@ -51,17 +51,14 @@ func NewMapFieldWidget(name string, fd protoreflect.FieldDescriptor) *MapFieldWi
 		}
 	})
 
-	// Create scroll container with minimum size for proper layout
-	scroll := container.NewVScroll(m.listBox)
-	scroll.SetMinSize(fyne.NewSize(0, 100)) // Ensure scroll area has minimum height
-
-	// Main container with label, list, and add button
+	// Main container with label, list, and add button.
+	// Items grow naturally inside the VBox; the outer form VScroll handles scrolling.
 	m.container = container.NewBorder(
 		widget.NewLabel(name+":"),
 		m.addButton,
 		nil,
 		nil,
-		scroll,
+		m.listBox,
 	)
 
 	m.ExtendBaseWidget(m)
@@ -215,7 +212,7 @@ func (m *MapFieldWidget) OnRemove(callback func(index int)) {
 func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 	switch m.keyDesc.Kind() {
 	case protoreflect.StringKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("key")
 		return entry
 	case protoreflect.Int32Kind, protoreflect.Int64Kind,
@@ -223,7 +220,7 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		protoreflect.Sint32Kind, protoreflect.Sint64Kind,
 		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
 		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		return entry
 	case protoreflect.BoolKind:
@@ -256,15 +253,15 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
 		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind,
 		protoreflect.FloatKind, protoreflect.DoubleKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		return entry
 	case protoreflect.StringKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("value")
 		return entry
 	case protoreflect.BytesKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("base64 or hex")
 		return entry
 	case protoreflect.MessageKind:

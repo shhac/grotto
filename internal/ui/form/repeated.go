@@ -45,17 +45,14 @@ func NewRepeatedFieldWidget(name string, fd protoreflect.FieldDescriptor) *Repea
 		}
 	})
 
-	// Create scroll container with minimum size for proper layout
-	scroll := container.NewVScroll(r.listBox)
-	scroll.SetMinSize(fyne.NewSize(0, 100)) // Ensure scroll area has minimum height
-
-	// Main container with label, list, and add button
+	// Main container with label, list, and add button.
+	// Items grow naturally inside the VBox; the outer form VScroll handles scrolling.
 	r.container = container.NewBorder(
 		widget.NewLabel(name+":"),
 		r.addButton,
 		nil,
 		nil,
-		scroll,
+		r.listBox,
 	)
 
 	r.ExtendBaseWidget(r)
@@ -298,13 +295,13 @@ func (r *RepeatedFieldWidget) createScalarWidget() fyne.CanvasObject {
 		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
 		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind,
 		protoreflect.FloatKind, protoreflect.DoubleKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
 		return entry
 	case protoreflect.StringKind:
-		return widget.NewEntry()
+		return newFormEntry()
 	case protoreflect.BytesKind:
-		entry := widget.NewEntry()
+		entry := newFormEntry()
 		entry.SetPlaceHolder("base64 or hex")
 		return entry
 	default:
