@@ -355,9 +355,7 @@ func TestServiceBrowser_GetMethodTypeBadge(t *testing.T) {
 				IsClientStream: true,
 				IsServerStream: false,
 			},
-			// Note: Due to mismatch between MethodType() returning "ClientStream"
-			// and switch case checking "Client Stream", this returns ""
-			expected: "",
+			expected: "↑",
 		},
 		{
 			name: "server stream method",
@@ -366,9 +364,7 @@ func TestServiceBrowser_GetMethodTypeBadge(t *testing.T) {
 				IsClientStream: false,
 				IsServerStream: true,
 			},
-			// Note: Due to mismatch between MethodType() returning "ServerStream"
-			// and switch case checking "Server Stream", this returns ""
-			expected: "",
+			expected: "↓",
 		},
 		{
 			name: "bidi stream method",
@@ -377,9 +373,7 @@ func TestServiceBrowser_GetMethodTypeBadge(t *testing.T) {
 				IsClientStream: true,
 				IsServerStream: true,
 			},
-			// Note: Due to mismatch between MethodType() returning "BidiStream"
-			// and switch case checking "Bidi Stream", this returns ""
-			expected: "",
+			expected: "⇅",
 		},
 	}
 

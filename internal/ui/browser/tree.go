@@ -170,11 +170,11 @@ func (b *ServiceBrowser) getMethodTypeBadge(method *domain.Method) string {
 	switch methodType {
 	case "Unary":
 		return ""
-	case "Client Stream":
+	case "ClientStream":
 		return "↑"
-	case "Server Stream":
+	case "ServerStream":
 		return "↓"
-	case "Bidi Stream":
+	case "BidiStream":
 		return "⇅"
 	default:
 		return ""

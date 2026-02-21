@@ -44,8 +44,9 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 		fd := fields.Get(i)
 		fieldName := string(fd.Name())
 
-		// Skip fields that are part of a oneof (handled separately)
-		if fd.ContainingOneof() != nil {
+		// Skip fields that are part of a real oneof (handled separately).
+		// Proto3 optional fields use synthetic oneofs — treat those as normal fields.
+		if fd.ContainingOneof() != nil && !fd.ContainingOneof().IsSynthetic() {
 			continue
 		}
 
@@ -108,10 +109,13 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 		}
 	}
 
-	// Handle oneofs
+	// Handle oneofs (skip synthetic oneofs created for proto3 optional fields)
 	oneofs := b.md.Oneofs()
 	for i := 0; i < oneofs.Len(); i++ {
 		od := oneofs.Get(i)
+		if od.IsSynthetic() {
+			continue
+		}
 		oneofName := string(od.Name())
 
 		oneofWidget := NewOneofWidget(oneofName, od)
@@ -549,9 +553,17 @@ func isZeroValue(v interface{}) bool {
 	switch val := v.(type) {
 	case bool:
 		return !val
-	case int32, int64, uint32, uint64:
+	case int32:
 		return val == 0
-	case float32, float64:
+	case int64:
+		return val == 0
+	case uint32:
+		return val == 0
+	case uint64:
+		return val == 0
+	case float32:
+		return val == 0
+	case float64:
 		return val == 0
 	case string:
 		return val == ""
