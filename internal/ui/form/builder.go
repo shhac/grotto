@@ -133,6 +133,15 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 	return container.NewVScroll(b.container)
 }
 
+// BuildContent creates the form UI without wrapping in a scroll container.
+// Use this for nested messages where the parent already provides scrolling.
+func (b *FormBuilder) BuildContent() fyne.CanvasObject {
+	obj := b.Build()
+	// Build() sets b.container as the VBox; return it directly without VScroll
+	_ = obj
+	return b.container
+}
+
 // GetFields returns all field widgets
 func (b *FormBuilder) GetFields() []*FieldWidget {
 	fields := make([]*FieldWidget, 0, len(b.fields))

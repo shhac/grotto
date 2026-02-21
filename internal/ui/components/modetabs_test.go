@@ -24,7 +24,7 @@ func TestNewModeTabs(t *testing.T) {
 	assert.Equal(t, formContent, modeTabs.formContent)
 }
 
-func TestModeTabs_GetMode_DefaultsToText(t *testing.T) {
+func TestModeTabs_GetMode_DefaultsToForm(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -33,9 +33,9 @@ func TestModeTabs_GetMode_DefaultsToText(t *testing.T) {
 
 	modeTabs := NewModeTabs(textContent, formContent)
 
-	// Default mode should be "text" (first option)
+	// Default mode should be "form"
 	mode := modeTabs.GetMode()
-	assert.Equal(t, "text", mode, "default mode should be text")
+	assert.Equal(t, "form", mode, "default mode should be form")
 }
 
 func TestModeTabs_SetMode(t *testing.T) {
@@ -112,15 +112,15 @@ func TestModeTabs_OnModeChange(t *testing.T) {
 		callbackCalls = append(callbackCalls, mode)
 	})
 
-	// Switch to form mode
-	modeTabs.SetMode("form")
-	assert.Len(t, callbackCalls, 1, "callback should be called once")
-	assert.Equal(t, "form", callbackCalls[0])
-
-	// Switch back to text mode
+	// Switch to text mode (default is form)
 	modeTabs.SetMode("text")
+	assert.Len(t, callbackCalls, 1, "callback should be called once")
+	assert.Equal(t, "text", callbackCalls[0])
+
+	// Switch back to form mode
+	modeTabs.SetMode("form")
 	assert.Len(t, callbackCalls, 2, "callback should be called twice")
-	assert.Equal(t, "text", callbackCalls[1])
+	assert.Equal(t, "form", callbackCalls[1])
 }
 
 func TestModeTabs_OnModeChange_NotCalledWhenAlreadyOnMode(t *testing.T) {
@@ -137,16 +137,16 @@ func TestModeTabs_OnModeChange_NotCalledWhenAlreadyOnMode(t *testing.T) {
 		callbackCount++
 	})
 
-	// Initially on text mode, set to text again (should be no-op)
-	modeTabs.SetMode("text")
+	// Initially on form mode, set to form again (should be no-op)
+	modeTabs.SetMode("form")
 	assert.Equal(t, 0, callbackCount, "callback should not be called when already on mode")
 
-	// Switch to form mode
-	modeTabs.SetMode("form")
+	// Switch to text mode
+	modeTabs.SetMode("text")
 	assert.Equal(t, 1, callbackCount, "callback should be called once")
 
-	// Set to form again (should be no-op)
-	modeTabs.SetMode("form")
+	// Set to text again (should be no-op)
+	modeTabs.SetMode("text")
 	assert.Equal(t, 1, callbackCount, "callback should not be called again")
 }
 
@@ -159,16 +159,16 @@ func TestModeTabs_ContentSwitching(t *testing.T) {
 
 	modeTabs := NewModeTabs(textContent, formContent)
 
-	// Default: text content visible
-	assert.Equal(t, textContent, modeTabs.contentStack.Objects[0])
-
-	// Switch to form
-	modeTabs.SetMode("form")
+	// Default: form content visible
 	assert.Equal(t, formContent, modeTabs.contentStack.Objects[0])
 
-	// Switch back to text
+	// Switch to text
 	modeTabs.SetMode("text")
 	assert.Equal(t, textContent, modeTabs.contentStack.Objects[0])
+
+	// Switch back to form
+	modeTabs.SetMode("form")
+	assert.Equal(t, formContent, modeTabs.contentStack.Objects[0])
 }
 
 func TestModeTabs_CreateRenderer(t *testing.T) {

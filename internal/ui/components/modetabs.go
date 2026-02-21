@@ -39,10 +39,10 @@ func NewModeTabs(textContent, formContent fyne.CanvasObject) *ModeTabs {
 		}
 	})
 	m.modeSelect.Horizontal = true
-	m.modeSelect.Selected = "Text"
+	m.modeSelect.Selected = "Form"
 
 	// Stack container shows the active mode's content
-	m.contentStack = container.NewStack(textContent)
+	m.contentStack = container.NewStack(formContent)
 
 	m.ExtendBaseWidget(m)
 	return m

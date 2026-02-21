@@ -36,7 +36,7 @@ func NewNestedMessageWidget(name string, md protoreflect.MessageDescriptor) *Nes
 	// Since nesting is recursive, each level auto-compounds the indent.
 	leftPad := canvas.NewRectangle(color.Transparent)
 	leftPad.SetMinSize(fyne.NewSize(12, 0))
-	indentedContent := container.NewBorder(nil, nil, leftPad, nil, n.builder.Build())
+	indentedContent := container.NewBorder(nil, nil, leftPad, nil, n.builder.BuildContent())
 
 	// Create accordion for expand/collapse behavior
 	n.accordion = widget.NewAccordion(
