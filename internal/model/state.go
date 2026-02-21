@@ -45,7 +45,7 @@ type RequestState struct {
 // NewRequestState creates a new RequestState with initialized bindings.
 func NewRequestState() *RequestState {
 	mode := binding.NewString()
-	_ = mode.Set("text") // Default to text mode
+	_ = mode.Set("form") // Default to form mode
 
 	return &RequestState{
 		Mode:     mode,
