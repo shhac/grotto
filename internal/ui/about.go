@@ -7,12 +7,17 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// Version is set at build time via ldflags:
+//
+//	go build -ldflags "-X github.com/shhac/grotto/internal/ui.Version=1.2.3"
+var Version = "dev"
+
 // ShowAboutDialog displays information about the Grotto application.
 func ShowAboutDialog(parent fyne.Window) {
 	content := container.NewVBox(
 		widget.NewLabelWithStyle("Grotto", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewLabel("A permissive, user-friendly gRPC client"),
-		widget.NewLabel("Version 0.1.0"),
+		widget.NewLabel("Version "+Version),
 		widget.NewSeparator(),
 		widget.NewLabel("Built with Fyne and Go"),
 	)

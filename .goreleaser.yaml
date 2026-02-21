@@ -1,0 +1,35 @@
+version: 2
+
+builds:
+  - main: ./cmd/grotto
+    binary: grotto
+    ldflags:
+      - -s -w
+      - -X github.com/shhac/grotto/internal/ui.Version={{.Version}}
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "grotto_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore\\(deps\\):"
+
+release:
+  github:
+    owner: shhac
+    name: grotto
+  draft: true
+  prerelease: auto
+  name_template: "Grotto v{{ .Version }}"
