@@ -234,8 +234,8 @@ func processDescriptors(fdset *descriptorpb.FileDescriptorSet) (*protoregistry.F
     // 4. Build complete set with well-known types
     complete := append(wellKnown, filtered...)
 
-    // 5. Use lenient parser (jhump/protoreflect)
-    return desc.CreateFileDescriptorsFromSet(&descriptorpb.FileDescriptorSet{
+    // 5. Use lenient parser (jhump/protoreflect/v2)
+    return protodesc.NewFiles(&descriptorpb.FileDescriptorSet{
         File: complete,
     })
 }
@@ -288,19 +288,19 @@ func loadWellKnownTypes() []*descriptorpb.FileDescriptorProto {
 ```go
 import (
     // gRPC reflection client (auto-detects v1/v1alpha)
-    "github.com/jhump/protoreflect/grpcreflect"
-
-    // Lenient descriptor parsing
-    "github.com/jhump/protoreflect/desc"
+    "github.com/jhump/protoreflect/v2/grpcreflect"
 
     // Dynamic gRPC invocation (unified API for all RPC types)
-    "github.com/jhump/protoreflect/dynamic/grpcdynamic"
+    "github.com/jhump/protoreflect/v2/grpcdynamic"
 
-    // Dynamic message construction (v2 API preferred over deprecated dynamic)
+    // Dynamic message construction (stdlib)
     "google.golang.org/protobuf/types/dynamicpb"
 
-    // JSON marshaling for text mode
+    // JSON marshaling for text mode (stdlib)
     "google.golang.org/protobuf/encoding/protojson"
+
+    // Descriptor types (stdlib)
+    "google.golang.org/protobuf/reflect/protoreflect"
 
     // Standard gRPC
     "google.golang.org/grpc"
@@ -1087,7 +1087,7 @@ Based on platform guidelines (Apple HIG, Windows UX):
 ```go
 require (
     fyne.io/fyne/v2 v2.4+               // GUI framework
-    github.com/jhump/protoreflect v1.17+ // Reflection client, grpcdynamic
+    github.com/jhump/protoreflect/v2 v2.0.0-beta.2+ // grpcreflect, grpcdynamic
     google.golang.org/grpc v1.77+        // gRPC (use NewClient, not Dial)
     google.golang.org/protobuf v1.32+    // dynamicpb, protojson
 )
