@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package grpctest;
+
+option go_package = "github.com/shhac/grotto/testdata/grpctest/pb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// Color enum for testing enum serialization.
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  RED = 1;
+  GREEN = 2;
+  BLUE = 3;
+}
+
+// Nested message for testing nested message serialization.
+message Nested {
+  string value = 1;
+}
+
+// Item exercises all common proto3 field types in a single message.
+message Item {
+  string id = 1;
+  string name = 2;
+  Color color = 3;
+  map<string, string> labels = 4;
+  repeated string tags = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Duration ttl = 7;
+  oneof payload {
+    string text = 8;
+    int64 number = 9;
+  }
+  Nested nested = 10;
+  int32 count = 11;
+  bool active = 12;
+  double score = 13;
+  bytes data = 14;
+}
+
+message ItemRequest {
+  Item item = 1;
+}
+
+message ItemResponse {
+  Item item = 1;
+  bool ok = 2;
+}
+
+message ItemList {
+  repeated Item items = 1;
+  int32 count = 2;
+}
+
+// TestService provides all four gRPC streaming patterns for integration testing.
+service TestService {
+  // Unary: echo back the request item with ok=true.
+  rpc UnaryEcho(ItemRequest) returns (ItemResponse);
+
+  // Server streaming: send the request item back multiple times.
+  rpc StreamItems(ItemRequest) returns (stream ItemResponse);
+
+  // Client streaming: collect items and return aggregated list.
+  rpc CollectItems(stream ItemRequest) returns (ItemList);
+
+  // Bidirectional streaming: echo each request immediately.
+  rpc BidiEcho(stream ItemRequest) returns (stream ItemResponse);
+}
