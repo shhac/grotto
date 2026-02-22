@@ -7,11 +7,12 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/jhump/protoreflect/desc"
-	"github.com/jhump/protoreflect/dynamic"
-	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	"github.com/jhump/protoreflect/v2/grpcdynamic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 const maxLogBodyLen = 512
@@ -29,7 +30,7 @@ func truncateForLog(s string) string {
 type Invoker struct {
 	conn   *grpc.ClientConn
 	logger *slog.Logger
-	stub   grpcdynamic.Stub
+	stub   *grpcdynamic.Stub
 }
 
 // NewInvoker creates a new dynamic gRPC invoker for the given connection.
@@ -54,21 +55,21 @@ func NewInvoker(conn *grpc.ClientConn, logger *slog.Logger) *Invoker {
 //   - err: Error if invocation fails or JSON marshaling fails
 func (i *Invoker) InvokeUnary(
 	ctx context.Context,
-	methodDesc *desc.MethodDescriptor,
+	methodDesc protoreflect.MethodDescriptor,
 	jsonRequest string,
 	md metadata.MD,
 ) (jsonResponse string, responseHeaders metadata.MD, err error) {
-	methodName := methodDesc.GetFullyQualifiedName()
+	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking unary RPC",
 		slog.String("method", methodName),
 		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message from method descriptor
-	reqMsg := dynamic.NewMessage(methodDesc.GetInputType())
+	reqMsg := dynamicpb.NewMessage(methodDesc.Input())
 
 	// Unmarshal JSON into dynamic message
-	if err := reqMsg.UnmarshalJSON([]byte(jsonRequest)); err != nil {
+	if err := protojson.Unmarshal([]byte(jsonRequest), reqMsg); err != nil {
 		i.logger.Error("failed to unmarshal request JSON",
 			slog.String("method", methodName),
 			slog.Any("error", err),
@@ -98,7 +99,7 @@ func (i *Invoker) InvokeUnary(
 	}
 
 	// Marshal response to JSON
-	jsonBytes, err := respMsg.(*dynamic.Message).MarshalJSON()
+	jsonBytes, err := protojson.Marshal(respMsg)
 	if err != nil {
 		i.logger.Error("failed to marshal response to JSON",
 			slog.String("method", methodName),
@@ -130,14 +131,14 @@ func (i *Invoker) InvokeUnary(
 // or a non-EOF error (failure). The channels are closed when the stream ends.
 func (i *Invoker) InvokeServerStream(
 	ctx context.Context,
-	methodDesc *desc.MethodDescriptor,
+	methodDesc protoreflect.MethodDescriptor,
 	jsonRequest string,
 	md metadata.MD,
 ) (<-chan string, <-chan error) {
 	msgChan := make(chan string, 10) // Buffered to avoid blocking on send
 	errChan := make(chan error, 1)
 
-	methodName := methodDesc.GetFullyQualifiedName()
+	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking server streaming RPC",
 		slog.String("method", methodName),
 		slog.String("request", truncateForLog(jsonRequest)),
@@ -148,10 +149,10 @@ func (i *Invoker) InvokeServerStream(
 		defer close(errChan)
 
 		// Create dynamic request message
-		reqMsg := dynamic.NewMessage(methodDesc.GetInputType())
+		reqMsg := dynamicpb.NewMessage(methodDesc.Input())
 
 		// Unmarshal JSON into dynamic message
-		if err := reqMsg.UnmarshalJSON([]byte(jsonRequest)); err != nil {
+		if err := protojson.Unmarshal([]byte(jsonRequest), reqMsg); err != nil {
 			i.logger.Error("failed to unmarshal request JSON",
 				slog.String("method", methodName),
 				slog.Any("error", err),
@@ -199,7 +200,7 @@ func (i *Invoker) InvokeServerStream(
 			}
 
 			// Marshal message to JSON
-			jsonBytes, err := respMsg.(*dynamic.Message).MarshalJSON()
+			jsonBytes, err := protojson.Marshal(respMsg)
 			if err != nil {
 				i.logger.Error("failed to marshal stream message to JSON",
 					slog.String("method", methodName),
@@ -236,24 +237,24 @@ func (i *Invoker) InvokeServerStream(
 // It provides methods to send messages and close the stream to receive the final response.
 type ClientStreamHandle struct {
 	stream     *grpcdynamic.ClientStream
-	methodDesc *desc.MethodDescriptor
+	methodDesc protoreflect.MethodDescriptor
 	logger     *slog.Logger
 }
 
 // Send sends a JSON message on the client stream.
 // Returns an error if the JSON is invalid or the send fails.
 func (h *ClientStreamHandle) Send(jsonRequest string) error {
-	methodName := h.methodDesc.GetFullyQualifiedName()
+	methodName := string(h.methodDesc.FullName())
 	h.logger.Debug("sending client stream message",
 		slog.String("method", methodName),
 		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message
-	reqMsg := dynamic.NewMessage(h.methodDesc.GetInputType())
+	reqMsg := dynamicpb.NewMessage(h.methodDesc.Input())
 
 	// Unmarshal JSON into dynamic message
-	if err := reqMsg.UnmarshalJSON([]byte(jsonRequest)); err != nil {
+	if err := protojson.Unmarshal([]byte(jsonRequest), reqMsg); err != nil {
 		h.logger.Error("failed to unmarshal request JSON",
 			slog.String("method", methodName),
 			slog.Any("error", err),
@@ -280,7 +281,7 @@ func (h *ClientStreamHandle) Send(jsonRequest string) error {
 // CloseAndReceive closes the send side of the stream and receives the final response.
 // Returns the JSON-formatted response or an error.
 func (h *ClientStreamHandle) CloseAndReceive() (string, error) {
-	methodName := h.methodDesc.GetFullyQualifiedName()
+	methodName := string(h.methodDesc.FullName())
 	h.logger.Debug("closing client stream and receiving response",
 		slog.String("method", methodName),
 	)
@@ -296,7 +297,7 @@ func (h *ClientStreamHandle) CloseAndReceive() (string, error) {
 	}
 
 	// Marshal response to JSON
-	jsonBytes, err := respMsg.(*dynamic.Message).MarshalJSON()
+	jsonBytes, err := protojson.Marshal(respMsg)
 	if err != nil {
 		h.logger.Error("failed to marshal response to JSON",
 			slog.String("method", methodName),
@@ -336,10 +337,10 @@ func (h *ClientStreamHandle) CloseAndReceive() (string, error) {
 //	response, err := handle.CloseAndReceive()
 func (i *Invoker) InvokeClientStream(
 	ctx context.Context,
-	methodDesc *desc.MethodDescriptor,
+	methodDesc protoreflect.MethodDescriptor,
 	md metadata.MD,
 ) (*ClientStreamHandle, error) {
-	methodName := methodDesc.GetFullyQualifiedName()
+	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking client streaming RPC",
 		slog.String("method", methodName),
 	)
@@ -374,24 +375,24 @@ func (i *Invoker) InvokeClientStream(
 // It provides methods to send messages, receive messages, and close the send side.
 type BidiStreamHandle struct {
 	stream     *grpcdynamic.BidiStream
-	methodDesc *desc.MethodDescriptor
+	methodDesc protoreflect.MethodDescriptor
 	logger     *slog.Logger
 }
 
 // Send sends a JSON message on the bidirectional stream.
 // Returns an error if the JSON is invalid or the send fails.
 func (h *BidiStreamHandle) Send(jsonRequest string) error {
-	methodName := h.methodDesc.GetFullyQualifiedName()
+	methodName := string(h.methodDesc.FullName())
 	h.logger.Debug("sending bidi stream message",
 		slog.String("method", methodName),
 		slog.String("request", truncateForLog(jsonRequest)),
 	)
 
 	// Create dynamic request message
-	reqMsg := dynamic.NewMessage(h.methodDesc.GetInputType())
+	reqMsg := dynamicpb.NewMessage(h.methodDesc.Input())
 
 	// Unmarshal JSON into dynamic message
-	if err := reqMsg.UnmarshalJSON([]byte(jsonRequest)); err != nil {
+	if err := protojson.Unmarshal([]byte(jsonRequest), reqMsg); err != nil {
 		h.logger.Error("failed to unmarshal request JSON",
 			slog.String("method", methodName),
 			slog.Any("error", err),
@@ -418,7 +419,7 @@ func (h *BidiStreamHandle) Send(jsonRequest string) error {
 // Recv receives a JSON message from the bidirectional stream.
 // Returns the JSON string, or io.EOF when the server closes the stream.
 func (h *BidiStreamHandle) Recv() (string, error) {
-	methodName := h.methodDesc.GetFullyQualifiedName()
+	methodName := string(h.methodDesc.FullName())
 
 	respMsg, err := h.stream.RecvMsg()
 	if err == io.EOF {
@@ -436,7 +437,7 @@ func (h *BidiStreamHandle) Recv() (string, error) {
 	}
 
 	// Marshal message to JSON
-	jsonBytes, err := respMsg.(*dynamic.Message).MarshalJSON()
+	jsonBytes, err := protojson.Marshal(respMsg)
 	if err != nil {
 		h.logger.Error("failed to marshal bidi stream message to JSON",
 			slog.String("method", methodName),
@@ -455,7 +456,7 @@ func (h *BidiStreamHandle) Recv() (string, error) {
 // CloseSend closes the send side of the bidirectional stream.
 // The client can still receive messages after closing the send side.
 func (h *BidiStreamHandle) CloseSend() error {
-	methodName := h.methodDesc.GetFullyQualifiedName()
+	methodName := string(h.methodDesc.FullName())
 	h.logger.Debug("closing bidi stream send side",
 		slog.String("method", methodName),
 	)
@@ -508,10 +509,10 @@ func (h *BidiStreamHandle) CloseSend() error {
 //	handle.CloseSend()
 func (i *Invoker) InvokeBidiStream(
 	ctx context.Context,
-	methodDesc *desc.MethodDescriptor,
+	methodDesc protoreflect.MethodDescriptor,
 	md metadata.MD,
 ) (*BidiStreamHandle, error) {
-	methodName := methodDesc.GetFullyQualifiedName()
+	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking bidirectional streaming RPC",
 		slog.String("method", methodName),
 	)

@@ -16,7 +16,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
-	"github.com/jhump/protoreflect/desc"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/grpc"
 	"github.com/shhac/grotto/internal/model"
@@ -372,13 +371,8 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		return
 	}
 
-	// Convert to protoreflect descriptor
-	inputType := methodDesc.GetInputType()
-	var protoDesc protoreflect.MessageDescriptor
-	if inputType != nil {
-		// desc.MessageDescriptor implements protoreflect.MessageDescriptor
-		protoDesc = inputType.UnwrapMessage()
-	}
+	// v2 descriptors are already stdlib protoreflect types
+	protoDesc := methodDesc.Input()
 
 	// Check if this is a bidirectional streaming method
 	isBidiStreaming := method.IsClientStream && method.IsServerStream
@@ -460,7 +454,7 @@ func (w *MainWindow) handleSendRequest(jsonStr string, metadataMap map[string]st
 	}
 
 	// Check if this is a server streaming RPC
-	if methodDesc.IsServerStreaming() {
+	if methodDesc.IsStreamingServer() {
 		w.handleServerStreamRequest(jsonStr, metadataMap, methodDesc)
 	} else {
 		w.handleUnaryRequest(jsonStr, metadataMap, methodDesc)
@@ -468,7 +462,7 @@ func (w *MainWindow) handleSendRequest(jsonStr string, metadataMap map[string]st
 }
 
 // handleUnaryRequest handles unary RPC invocations
-func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]string, methodDesc *desc.MethodDescriptor) {
+func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]string, methodDesc protoreflect.MethodDescriptor) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -568,7 +562,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 }
 
 // handleServerStreamRequest handles server streaming RPC invocations
-func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[string]string, methodDesc *desc.MethodDescriptor) {
+func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[string]string, methodDesc protoreflect.MethodDescriptor) {
 	ctx, cancel := context.WithCancel(context.Background())
 	w.streamMu.Lock()
 	w.serverStreamCancel = cancel
@@ -791,7 +785,7 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 		}
 
 		// Verify this is a client streaming method
-		if !methodDesc.IsClientStreaming() {
+		if !methodDesc.IsStreamingClient() {
 			dialog.ShowError(fmt.Errorf("method %s is not a client streaming RPC", methodName), w.window)
 			return
 		}
@@ -1092,7 +1086,7 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 		}
 
 		// Verify this is a bidi streaming method
-		if !methodDesc.IsClientStreaming() || !methodDesc.IsServerStreaming() {
+		if !methodDesc.IsStreamingClient() || !methodDesc.IsStreamingServer() {
 			dialog.ShowError(fmt.Errorf("method %s is not a bidirectional streaming RPC", methodName), w.window)
 			return
 		}
