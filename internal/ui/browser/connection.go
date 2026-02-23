@@ -151,21 +151,30 @@ func (c *ConnectionBar) updateButton() {
 	case "disconnected":
 		c.connectBtn.SetText("Connect")
 		c.connectBtn.Enable()
+		c.addressEntry.OnChanged = nil
 		c.addressEntry.Enable()
 		c.tlsToggleBtn.Enable()
 	case "connecting":
 		c.connectBtn.SetText("Connecting...")
 		c.connectBtn.Disable()
+		c.addressEntry.OnChanged = nil
 		c.addressEntry.Disable()
 		c.tlsToggleBtn.Disable()
 	case "connected":
 		c.connectBtn.SetText("Disconnect")
 		c.connectBtn.Enable()
-		c.addressEntry.Disable()
+		// Keep entry enabled for readable text contrast; prevent edits via OnChanged guard.
+		connectedAddr := c.addressEntry.Text
+		c.addressEntry.OnChanged = func(s string) {
+			if s != connectedAddr {
+				c.addressEntry.SetText(connectedAddr)
+			}
+		}
 		c.tlsToggleBtn.Disable()
 	case "error":
 		c.connectBtn.SetText("Retry")
 		c.connectBtn.Enable()
+		c.addressEntry.OnChanged = nil
 		c.addressEntry.Enable()
 		c.tlsToggleBtn.Enable()
 	}
