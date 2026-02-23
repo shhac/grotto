@@ -15,7 +15,9 @@ type ResponsePanel struct {
 
 	window        fyne.Window
 	state         *model.ResponseState
-	textDisplay   *widget.Entry // Read-only multiline for JSON
+	richText      *widget.RichText
+	placeholder   *widget.Label
+	jsonScroll    *fyne.Container // stack of richText + placeholder
 	errorLabel    *widget.Label
 	durationLabel *widget.Label
 	loadingBar    *widget.ProgressBarInfinite
@@ -54,11 +56,15 @@ func NewResponsePanel(state *model.ResponseState, window fyne.Window) *ResponseP
 
 // initializeComponents creates all UI components.
 func (p *ResponsePanel) initializeComponents() {
-	// Response text display (read-only multiline entry)
-	p.textDisplay = widget.NewMultiLineEntry()
-	p.textDisplay.Wrapping = fyne.TextWrapWord
-	p.textDisplay.SetPlaceHolder("Send a request to see the response")
-	p.textDisplay.Disable()
+	// Response text display (syntax-highlighted JSON)
+	p.richText = widget.NewRichText()
+	p.richText.Wrapping = fyne.TextWrapBreak
+	p.richText.Scroll = fyne.ScrollBoth
+
+	// Placeholder shown when no response
+	p.placeholder = widget.NewLabel("Send a request to see the response")
+	p.placeholder.Alignment = fyne.TextAlignCenter
+	p.jsonScroll = container.NewStack(p.richText, p.placeholder)
 
 	// Duration label
 	p.durationLabel = widget.NewLabel("")
@@ -119,7 +125,7 @@ func (p *ResponsePanel) initializeComponents() {
 		),
 		nil,
 		nil,
-		p.textDisplay,
+		p.jsonScroll,
 	)
 
 	// Headers tab: metadata list
@@ -150,8 +156,19 @@ func (p *ResponsePanel) initializeComponents() {
 
 // setupBindings establishes reactive bindings to the state.
 func (p *ResponsePanel) setupBindings() {
-	// Bind text data to display
-	p.textDisplay.Bind(p.state.TextData)
+	// Listen to text data changes and re-highlight
+	p.state.TextData.AddListener(binding.NewDataListener(func() {
+		text, _ := p.state.TextData.Get()
+		if text == "" {
+			p.richText.Segments = nil
+			p.richText.Refresh()
+			p.placeholder.Show()
+		} else {
+			p.placeholder.Hide()
+			p.richText.Segments = highlightJSON(text)
+			p.richText.Refresh()
+		}
+	}))
 
 	// Bind duration
 	p.durationLabel.Bind(p.state.Duration)
