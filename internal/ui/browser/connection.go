@@ -18,6 +18,7 @@ type ConnectionBar struct {
 	addressEntry *widget.Entry
 	connectBtn   *widget.Button
 	tlsBtn       *widget.Button
+	tlsToggleBtn *widget.Button
 	state        *model.ConnectionUIState
 	window       fyne.Window
 
@@ -47,16 +48,23 @@ func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window) *Conne
 		c.handleButtonClick()
 	})
 
-	// TLS settings button with icon
+	// TLS toggle button with padlock icon (left of address)
+	c.tlsToggleBtn = widget.NewButtonWithIcon("", lockUnlockedIcon, func() {
+		c.tlsSettings.Enabled = !c.tlsSettings.Enabled
+		c.updateTLSIcon()
+	})
+	c.tlsToggleBtn.Importance = widget.LowImportance
+
+	// TLS settings button with gear icon (advanced settings)
 	c.tlsBtn = widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
 		c.showTLSSettings()
 	})
 	c.tlsBtn.Importance = widget.LowImportance
 
-	// Layout: address entry, TLS button, connect button
+	// Layout: [padlock] [address entry] [gear] [connect]
 	c.container = container.NewBorder(
 		nil, nil,
-		nil,
+		c.tlsToggleBtn,
 		container.NewHBox(c.tlsBtn, c.connectBtn),
 		c.addressEntry,
 	)
@@ -119,7 +127,17 @@ func (c *ConnectionBar) handleButtonClick() {
 func (c *ConnectionBar) showTLSSettings() {
 	settings.ShowTLSDialog(c.window, c.tlsSettings, func(newSettings domain.TLSSettings) {
 		c.tlsSettings = newSettings
+		c.updateTLSIcon()
 	})
+}
+
+// updateTLSIcon syncs the padlock icon with the current TLS enabled state.
+func (c *ConnectionBar) updateTLSIcon() {
+	if c.tlsSettings.Enabled {
+		c.tlsToggleBtn.SetIcon(lockLockedIcon)
+	} else {
+		c.tlsToggleBtn.SetIcon(lockUnlockedIcon)
+	}
 }
 
 // updateButton updates the button text and state based on connection state
@@ -134,18 +152,22 @@ func (c *ConnectionBar) updateButton() {
 		c.connectBtn.SetText("Connect")
 		c.connectBtn.Enable()
 		c.addressEntry.Enable()
+		c.tlsToggleBtn.Enable()
 	case "connecting":
 		c.connectBtn.SetText("Connecting...")
 		c.connectBtn.Disable()
 		c.addressEntry.Disable()
+		c.tlsToggleBtn.Disable()
 	case "connected":
 		c.connectBtn.SetText("Disconnect")
 		c.connectBtn.Enable()
 		c.addressEntry.Disable()
+		c.tlsToggleBtn.Disable()
 	case "error":
 		c.connectBtn.SetText("Retry")
 		c.connectBtn.Enable()
 		c.addressEntry.Enable()
+		c.tlsToggleBtn.Enable()
 	}
 }
 
@@ -154,9 +176,10 @@ func (c *ConnectionBar) GetTLSSettings() domain.TLSSettings {
 	return c.tlsSettings
 }
 
-// SetTLSSettings sets the TLS settings
-func (c *ConnectionBar) SetTLSSettings(settings domain.TLSSettings) {
-	c.tlsSettings = settings
+// SetTLSSettings sets the TLS settings and updates the padlock icon.
+func (c *ConnectionBar) SetTLSSettings(s domain.TLSSettings) {
+	c.tlsSettings = s
+	c.updateTLSIcon()
 }
 
 // FocusAddress focuses the address entry field (for keyboard shortcut)

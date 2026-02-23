@@ -677,16 +677,16 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 // SetContent builds and sets the main window layout.
 // Layout structure:
 //
-//	┌─────────────────┬──────────────────────────────┐
-//	│  Connection Bar │                              │
-//	├─────────────────┼──────────────────────────────┤
-//	│                 │      Request Panel           │
-//	│  Service        ├──────────────────────────────┤
-//	│  Browser        │      Response Panel          │
-//	├─────────────────┼──────────────────────────────┤
-//	│  Workspaces     │      Status Bar              │
-//	└─────────────────┴──────────────────────────────┘
-// buildLeftPanel constructs the left panel with connection bar, service browser, and workspace.
+//	┌──────────────────────────────────────────────────┐
+//	│               Connection Bar                     │
+//	├─────────────────┬────────────────────────────────┤
+//	│                 │      Request Panel             │
+//	│  Service        ├────────────────────────────────┤
+//	│  Browser        │      Response Panel            │
+//	├─────────────────┼────────────────────────────────┤
+//	│  Workspaces     │      Status Bar                │
+//	└─────────────────┴────────────────────────────────┘
+// buildLeftPanel constructs the left panel with service browser and workspace tabs.
 func (w *MainWindow) buildLeftPanel() *fyne.Container {
 	leftTabs := container.NewAppTabs(
 		container.NewTabItem("Workspaces", w.workspacePanel),
@@ -698,7 +698,7 @@ func (w *MainWindow) buildLeftPanel() *fyne.Container {
 	)
 	browserWithTabs.SetOffset(0.7)
 	return container.NewBorder(
-		w.connectionBar,
+		nil,
 		nil, nil, nil,
 		browserWithTabs,
 	)
@@ -730,14 +730,15 @@ func (w *MainWindow) SetContent() {
 
 	// Main layout: horizontal split with browser on left, panels on right
 	mainSplit := container.NewHSplit(
-		leftPanel,  // left side (connection + browser)
+		leftPanel,  // left side (browser + workspaces)
 		rightPanel, // right side (request/response/status)
 	)
 
 	// Set the initial split position (30% for browser, 70% for panels)
 	mainSplit.SetOffset(0.3)
 
-	w.window.SetContent(mainSplit)
+	// Connection bar spans full window width above the split
+	w.window.SetContent(container.NewBorder(w.connectionBar, nil, nil, nil, mainSplit))
 }
 
 // Window returns the underlying Fyne window.
@@ -1038,7 +1039,7 @@ func (w *MainWindow) switchToBidiPanel() {
 
 	mainSplit := container.NewHSplit(leftPanel, rightPanel)
 	mainSplit.SetOffset(0.3)
-	w.window.SetContent(mainSplit)
+	w.window.SetContent(container.NewBorder(w.connectionBar, nil, nil, nil, mainSplit))
 	w.inBidiMode = true
 }
 
