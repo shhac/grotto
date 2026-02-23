@@ -26,9 +26,12 @@ type StatusBar struct {
 
 // NewStatusBar creates a new status bar bound to the given connection state.
 func NewStatusBar(state *model.ConnectionUIState) *StatusBar {
+	label := widget.NewLabel("Disconnected")
+	label.Truncation = fyne.TextTruncateEllipsis
+
 	s := &StatusBar{
 		state:       state,
-		statusLabel: widget.NewLabel("Disconnected"),
+		statusLabel: label,
 		indicator:   widget.NewIcon(theme.RadioButtonIcon()),
 	}
 	s.ExtendBaseWidget(s)
