@@ -23,6 +23,12 @@ type ResponsePanel struct {
 	loadingBar    *widget.ProgressBarInfinite
 	copyBtn       *widget.Button
 
+	// Select mode: toggle between colored RichText and selectable Entry
+	selectMode   bool
+	selectEntry  *widget.Entry
+	selectToggle *widget.Button
+	displayStack *fyne.Container // swaps between jsonScroll and selectEntry
+
 	// Response metadata display
 	metadataKeys binding.StringList
 	metadataVals binding.StringList
@@ -69,13 +75,28 @@ func (p *ResponsePanel) initializeComponents() {
 	// Duration label
 	p.durationLabel = widget.NewLabel("")
 
-	// Copy button
+	// Copy button (hidden until there's a response)
 	p.copyBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 		text, _ := p.state.TextData.Get()
 		if text != "" {
 			p.window.Clipboard().SetContent(text)
 		}
 	})
+	p.copyBtn.Hide()
+
+	// Select mode: disabled Entry for text selection
+	p.selectEntry = widget.NewMultiLineEntry()
+	p.selectEntry.Wrapping = fyne.TextWrapWord
+	p.selectEntry.Disable()
+
+	// Toggle button to switch between colored display and selectable text
+	p.selectToggle = widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() {
+		p.toggleSelectMode()
+	})
+	p.selectToggle.Hide()
+
+	// Display stack: swaps between colored RichText and selectable Entry
+	p.displayStack = container.NewStack(p.jsonScroll)
 
 	// Loading bar (infinite progress)
 	p.loadingBar = widget.NewProgressBarInfinite()
@@ -116,16 +137,16 @@ func (p *ResponsePanel) initializeComponents() {
 	p.streamingWidget = NewStreamingMessagesWidget(p.window)
 
 	// Create tab content containers
-	// Response tab: text display with duration and copy button at bottom
+	// Response tab: text display with duration, select toggle, and copy button at bottom
 	responseTabContent := container.NewBorder(
 		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
-			container.NewBorder(nil, nil, p.durationLabel, p.copyBtn),
+			container.NewBorder(nil, nil, p.durationLabel, container.NewHBox(p.selectToggle, p.copyBtn)),
 		),
 		nil,
 		nil,
-		p.jsonScroll,
+		p.displayStack,
 	)
 
 	// Headers tab: metadata list
@@ -163,10 +184,25 @@ func (p *ResponsePanel) setupBindings() {
 			p.richText.Segments = nil
 			p.richText.Refresh()
 			p.placeholder.Show()
+			p.copyBtn.Hide()
+			p.selectToggle.Hide()
+			// Exit select mode when response is cleared
+			if p.selectMode {
+				p.selectMode = false
+				p.selectToggle.SetIcon(theme.ContentCutIcon())
+				p.displayStack.Objects = []fyne.CanvasObject{p.jsonScroll}
+				p.displayStack.Refresh()
+			}
 		} else {
 			p.placeholder.Hide()
+			p.copyBtn.Show()
+			p.selectToggle.Show()
 			p.richText.Segments = highlightJSON(text)
 			p.richText.Refresh()
+			// Keep select entry in sync
+			if p.selectMode {
+				p.selectEntry.SetText(text)
+			}
 		}
 	}))
 
@@ -242,6 +278,23 @@ func (p *ResponsePanel) SetStreaming(streaming bool) {
 func (p *ResponsePanel) showStreaming() {
 	p.contentContainer.Objects = []fyne.CanvasObject{p.streamingContent}
 	p.contentContainer.Refresh()
+}
+
+// toggleSelectMode switches between colored RichText display and selectable plain text Entry.
+func (p *ResponsePanel) toggleSelectMode() {
+	p.selectMode = !p.selectMode
+	if p.selectMode {
+		// Switch to selectable plain text
+		text, _ := p.state.TextData.Get()
+		p.selectEntry.SetText(text)
+		p.displayStack.Objects = []fyne.CanvasObject{p.selectEntry}
+		p.selectToggle.SetIcon(theme.ColorPaletteIcon())
+	} else {
+		// Switch back to colored display
+		p.displayStack.Objects = []fyne.CanvasObject{p.jsonScroll}
+		p.selectToggle.SetIcon(theme.ContentCutIcon())
+	}
+	p.displayStack.Refresh()
 }
 
 // StreamingWidget returns the streaming widget for external control.
