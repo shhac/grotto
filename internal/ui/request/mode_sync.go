@@ -164,6 +164,18 @@ func (s *ModeSynchronizer) syncFormToText() {
 	_ = s.textData.Set(jsonStr)
 }
 
+// SyncTextToFormNow syncs text to form immediately (for history load)
+// Unlike SwitchMode, this doesn't change the mode
+func (s *ModeSynchronizer) SyncTextToFormNow() {
+	if !s.syncing.CompareAndSwap(false, true) {
+		return
+	}
+
+	defer s.syncing.Store(false)
+
+	s.syncTextToForm()
+}
+
 // SyncFormToTextNow syncs form to text immediately (for send operations)
 // Unlike SwitchMode, this doesn't change the mode
 func (s *ModeSynchronizer) SyncFormToTextNow() {

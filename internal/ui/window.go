@@ -1374,6 +1374,9 @@ func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
 			// Set metadata on the request panel's internal bindings
 			w.requestPanel.SetMetadata(entry.Metadata.Request)
 
+			// Populate form from the loaded JSON text
+			w.requestPanel.SyncTextToForm()
+
 			w.logger.Info("history entry loaded into request panel")
 
 			if andSend {
@@ -1454,6 +1457,7 @@ func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
 			w.serviceBrowser.SelectMethod(serviceName, methodName)
 			_ = w.state.Request.TextData.Set(entry.Request)
 			w.requestPanel.SetMetadata(entry.Metadata.Request)
+			w.requestPanel.SyncTextToForm()
 
 			w.logger.Info("history entry loaded - triggering send")
 			w.requestPanel.TriggerSend()

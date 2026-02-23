@@ -350,6 +350,11 @@ func (p *RequestPanel) SetMetadata(metadata map[string]string) {
 	p.metadataList.Refresh()
 }
 
+// SyncTextToForm populates the form from current TextData (for history load)
+func (p *RequestPanel) SyncTextToForm() {
+	p.synchronizer.SyncTextToFormNow()
+}
+
 // TriggerSend programmatically triggers the send action (for keyboard shortcut)
 func (p *RequestPanel) TriggerSend() {
 	p.handleSend()
