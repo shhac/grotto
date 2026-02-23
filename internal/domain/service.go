@@ -5,6 +5,7 @@ type Service struct {
 	Name     string
 	FullName string // Fully qualified name
 	Methods  []Method
+	Error    string // non-empty when descriptor resolution failed
 }
 
 // Method represents a gRPC method

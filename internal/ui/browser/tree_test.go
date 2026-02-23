@@ -439,3 +439,74 @@ func TestServiceBrowser_Refresh(t *testing.T) {
 		browser.Refresh()
 	})
 }
+
+func TestServiceBrowser_ErrorService(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	services := binding.NewUntypedList()
+	normalService := domain.Service{
+		Name:     "HealthService",
+		FullName: "example.HealthService",
+		Methods: []domain.Method{
+			{Name: "Check", FullName: "example.HealthService.Check"},
+		},
+	}
+	errorService := domain.Service{
+		Name:     "BrokenService",
+		FullName: "example.BrokenService",
+		Error:    "failed to resolve type: some.Missing.Type",
+	}
+
+	services.Append(normalService)
+	services.Append(errorService)
+
+	browser := NewServiceBrowser(services)
+
+	// Both services should appear in the tree
+	serviceUIDs := browser.getServiceUIDs()
+	assert.Len(t, serviceUIDs, 2)
+	assert.Contains(t, serviceUIDs, "example.HealthService")
+	assert.Contains(t, serviceUIDs, "example.BrokenService")
+
+	// Normal service has method children
+	healthMethods := browser.getMethodUIDs("example.HealthService")
+	assert.Len(t, healthMethods, 1)
+
+	// Error service has no method children
+	brokenMethods := browser.getMethodUIDs("example.BrokenService")
+	assert.Len(t, brokenMethods, 0)
+
+	// Both are branches
+	assert.True(t, browser.isBranch("example.HealthService"))
+	assert.True(t, browser.isBranch("example.BrokenService"))
+}
+
+func TestServiceBrowser_OnServiceError(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	services := binding.NewUntypedList()
+	errorService := domain.Service{
+		Name:     "BrokenService",
+		FullName: "example.BrokenService",
+		Error:    "unresolvable type dependency",
+	}
+	services.Append(errorService)
+
+	browser := NewServiceBrowser(services)
+
+	var capturedService domain.Service
+	callbackCalled := false
+	browser.SetOnServiceError(func(service domain.Service) {
+		capturedService = service
+		callbackCalled = true
+	})
+
+	// Selecting an error service should trigger onServiceError, not expand/collapse
+	browser.onTreeSelected("example.BrokenService")
+
+	assert.True(t, callbackCalled, "onServiceError callback should be called")
+	assert.Equal(t, "BrokenService", capturedService.Name)
+	assert.Equal(t, "unresolvable type dependency", capturedService.Error)
+}

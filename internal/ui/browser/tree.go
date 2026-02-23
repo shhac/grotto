@@ -29,6 +29,7 @@ type ServiceBrowser struct {
 
 	// Callbacks
 	onMethodSelect func(service domain.Service, method domain.Method)
+	onServiceError func(service domain.Service)
 }
 
 // NewServiceBrowser creates a new service browser widget
@@ -73,6 +74,11 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 // SetOnMethodSelect sets callback when a method is selected
 func (b *ServiceBrowser) SetOnMethodSelect(fn func(service domain.Service, method domain.Method)) {
 	b.onMethodSelect = fn
+}
+
+// SetOnServiceError sets callback when an error service is selected
+func (b *ServiceBrowser) SetOnServiceError(fn func(service domain.Service)) {
+	b.onServiceError = fn
 }
 
 // Refresh updates the tree from the services binding
@@ -136,21 +142,27 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 	label := cont.Objects[1].(*widget.Label)
 
 	if branch {
-		// Services: use a subtle folder icon to distinguish from methods
-		// (tree widget already shows expand/collapse chevron)
-		icon.Resource = theme.FolderIcon()
-		icon.Refresh()
-
-		// Count methods in this service
 		service := b.findService(uid)
-		methodCount := 0
-		if service != nil {
-			methodCount = len(service.Methods)
-		}
 
-		label.SetText(fmt.Sprintf("%s  (%d)", uid, methodCount))
-		label.TextStyle = fyne.TextStyle{Bold: true}
-		label.Importance = widget.MediumImportance
+		if service != nil && service.Error != "" {
+			// Error service: show warning icon and indicator
+			icon.Resource = theme.WarningIcon()
+			icon.Refresh()
+			label.SetText(fmt.Sprintf("%s  ⚠", uid))
+			label.TextStyle = fyne.TextStyle{Italic: true}
+			label.Importance = widget.WarningImportance
+		} else {
+			// Normal service
+			icon.Resource = theme.FolderIcon()
+			icon.Refresh()
+			methodCount := 0
+			if service != nil {
+				methodCount = len(service.Methods)
+			}
+			label.SetText(fmt.Sprintf("%s  (%d)", uid, methodCount))
+			label.TextStyle = fyne.TextStyle{Bold: true}
+			label.Importance = widget.MediumImportance
+		}
 	} else {
 		// Methods: show icon based on method type
 		parts := strings.Split(uid, ":")
@@ -226,14 +238,21 @@ func (b *ServiceBrowser) onTreeSelected(uid string) {
 			}
 		}
 	} else {
-		// Service selection (branch) - toggle expand/collapse
-		if b.tree.IsBranchOpen(uid) {
-			b.tree.CloseBranch(uid)
+		// Service selection (branch)
+		service := b.findService(uid)
+		if service != nil && service.Error != "" && b.onServiceError != nil {
+			// Error service: show error details
+			b.onServiceError(*service)
+			b.tree.UnselectAll()
 		} else {
-			b.tree.OpenBranch(uid)
+			// Normal service: toggle expand/collapse
+			if b.tree.IsBranchOpen(uid) {
+				b.tree.CloseBranch(uid)
+			} else {
+				b.tree.OpenBranch(uid)
+			}
+			b.tree.UnselectAll()
 		}
-		// Unselect so clicking the same service again will trigger OnSelected
-		b.tree.UnselectAll()
 	}
 }
 

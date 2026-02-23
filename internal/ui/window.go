@@ -147,6 +147,12 @@ func (w *MainWindow) wireCallbacks() {
 		w.handleMethodSelect(service, method)
 	})
 
+	// Error service selection — show reflection error in response panel
+	w.serviceBrowser.SetOnServiceError(func(service domain.Service) {
+		_ = w.state.Response.Error.Set(
+			fmt.Sprintf("Service %s failed reflection:\n%s", service.FullName, service.Error))
+	})
+
 	// Send request (unary/server streaming)
 	w.requestPanel.SetOnSend(func(jsonStr string, metadata map[string]string) {
 		w.handleSendRequest(jsonStr, metadata)
@@ -252,7 +258,20 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 		_ = w.state.CurrentServer.Set(address)
 		_ = w.state.Connected.Set(true)
 		_ = w.connState.State.Set("connected")
-		_ = w.connState.Message.Set("Connected to " + address)
+
+		// Status message: include error count when some services failed
+		var errorCount int
+		for _, svc := range services {
+			if svc.Error != "" {
+				errorCount++
+			}
+		}
+		statusMsg := "Connected to " + address
+		if errorCount > 0 {
+			statusMsg = fmt.Sprintf("Connected to %s (%d services, %d with errors)",
+				address, len(services), errorCount)
+		}
+		_ = w.connState.Message.Set(statusMsg)
 
 		w.logger.Info("connection established and services loaded",
 			slog.String("address", address),
