@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/model"
+	"github.com/shhac/grotto/internal/storage"
 	"github.com/shhac/grotto/internal/ui/settings"
 )
 
@@ -15,12 +16,14 @@ import (
 type ConnectionBar struct {
 	widget.BaseWidget
 
-	addressEntry *widget.Entry
+	addressEntry *widget.SelectEntry
 	connectBtn   *widget.Button
 	tlsBtn       *widget.Button
 	tlsToggleBtn *widget.Button
 	state        *model.ConnectionUIState
 	window       fyne.Window
+	storage      storage.Repository
+	recentConns  []domain.Connection
 
 	// TLS settings
 	tlsSettings domain.TLSSettings
@@ -32,17 +35,19 @@ type ConnectionBar struct {
 }
 
 // NewConnectionBar creates a new connection bar widget
-func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window) *ConnectionBar {
+func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window, repo storage.Repository) *ConnectionBar {
 	c := &ConnectionBar{
-		state:  state,
-		window: window,
+		state:   state,
+		window:  window,
+		storage: repo,
 	}
 
-	c.addressEntry = widget.NewEntry()
+	c.addressEntry = widget.NewSelectEntry(nil)
 	c.addressEntry.SetPlaceHolder("localhost:50051")
 	c.addressEntry.OnSubmitted = func(s string) {
 		c.handleButtonClick()
 	}
+	c.loadRecentOptions()
 
 	c.connectBtn = widget.NewButton("Connect", func() {
 		c.handleButtonClick()
@@ -151,7 +156,7 @@ func (c *ConnectionBar) updateButton() {
 	case "disconnected":
 		c.connectBtn.SetText("Connect")
 		c.connectBtn.Enable()
-		c.addressEntry.OnChanged = nil
+		c.addressEntry.OnChanged = c.restoreTLSFromHistory
 		c.addressEntry.Enable()
 		c.tlsToggleBtn.Enable()
 	case "connecting":
@@ -174,7 +179,7 @@ func (c *ConnectionBar) updateButton() {
 	case "error":
 		c.connectBtn.SetText("Retry")
 		c.connectBtn.Enable()
-		c.addressEntry.OnChanged = nil
+		c.addressEntry.OnChanged = c.restoreTLSFromHistory
 		c.addressEntry.Enable()
 		c.tlsToggleBtn.Enable()
 	}
@@ -204,4 +209,40 @@ func (c *ConnectionBar) TriggerConnect() {
 // SetAddress sets the address in the entry field
 func (c *ConnectionBar) SetAddress(address string) {
 	c.addressEntry.SetText(address)
+}
+
+// SaveConnection persists the given connection to recent connections and refreshes the dropdown.
+func (c *ConnectionBar) SaveConnection(conn domain.Connection) {
+	if err := c.storage.SaveRecentConnection(conn); err != nil {
+		return
+	}
+	fyne.Do(func() {
+		c.loadRecentOptions()
+	})
+}
+
+// loadRecentOptions populates the address dropdown from stored recent connections.
+func (c *ConnectionBar) loadRecentOptions() {
+	conns, err := c.storage.GetRecentConnections()
+	if err != nil || len(conns) == 0 {
+		return
+	}
+	c.recentConns = conns
+	options := make([]string, len(conns))
+	for i, conn := range conns {
+		options[i] = conn.Address
+	}
+	c.addressEntry.SetOptions(options)
+}
+
+// restoreTLSFromHistory restores TLS settings when an address matches a recent connection.
+func (c *ConnectionBar) restoreTLSFromHistory(addr string) {
+	for _, conn := range c.recentConns {
+		if conn.Address == addr {
+			c.tlsSettings = conn.TLS
+			c.tlsSettings.Enabled = conn.UseTLS
+			c.updateTLSIcon()
+			return
+		}
+	}
 }

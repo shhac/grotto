@@ -97,7 +97,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	}
 
 	// Create real UI components
-	mw.connectionBar = browser.NewConnectionBar(connState, window)
+	mw.connectionBar = browser.NewConnectionBar(connState, window, app.Storage())
 	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services)
 	mw.requestPanel = request.NewRequestPanel(mw.state.Request, mw.logger)
 	mw.responsePanel = response.NewResponsePanel(mw.state.Response)
@@ -277,6 +277,9 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 			slog.String("address", address),
 			slog.Int("service_count", len(services)),
 		)
+
+		// Save to recent connections
+		w.connectionBar.SaveConnection(cfg)
 
 		// Refresh the service browser and focus it (must be on main thread in Fyne 2.6+)
 		fyne.Do(func() {
