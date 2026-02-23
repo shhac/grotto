@@ -100,7 +100,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	mw.connectionBar = browser.NewConnectionBar(connState, window, app.Storage())
 	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services)
 	mw.requestPanel = request.NewRequestPanel(mw.state.Request, mw.logger)
-	mw.responsePanel = response.NewResponsePanel(mw.state.Response)
+	mw.responsePanel = response.NewResponsePanel(mw.state.Response, window)
 	mw.bidiPanel = bidi.NewBidiStreamPanel()
 	mw.statusBar = uierrors.NewStatusBar(connState)
 	mw.workspacePanel = workspace.NewWorkspacePanel(app.Storage(), app.Logger(), window)

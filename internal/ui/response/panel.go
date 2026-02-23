@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/model"
 )
@@ -12,11 +13,13 @@ import (
 type ResponsePanel struct {
 	widget.BaseWidget
 
+	window        fyne.Window
 	state         *model.ResponseState
 	textDisplay   *widget.Entry // Read-only multiline for JSON
 	errorLabel    *widget.Label
 	durationLabel *widget.Label
 	loadingBar    *widget.ProgressBarInfinite
+	copyBtn       *widget.Button
 
 	// Response metadata display
 	metadataKeys binding.StringList
@@ -36,8 +39,9 @@ type ResponsePanel struct {
 }
 
 // NewResponsePanel creates a new response panel bound to the application state.
-func NewResponsePanel(state *model.ResponseState) *ResponsePanel {
+func NewResponsePanel(state *model.ResponseState, window fyne.Window) *ResponsePanel {
 	p := &ResponsePanel{
+		window:       window,
 		state:        state,
 		metadataKeys: binding.NewStringList(),
 		metadataVals: binding.NewStringList(),
@@ -58,6 +62,14 @@ func (p *ResponsePanel) initializeComponents() {
 
 	// Duration label
 	p.durationLabel = widget.NewLabel("")
+
+	// Copy button
+	p.copyBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		text, _ := p.state.TextData.Get()
+		if text != "" {
+			p.window.Clipboard().SetContent(text)
+		}
+	})
 
 	// Loading bar (infinite progress)
 	p.loadingBar = widget.NewProgressBarInfinite()
@@ -95,15 +107,15 @@ func (p *ResponsePanel) initializeComponents() {
 	)
 
 	// Streaming widget
-	p.streamingWidget = NewStreamingMessagesWidget()
+	p.streamingWidget = NewStreamingMessagesWidget(p.window)
 
 	// Create tab content containers
-	// Response tab: text display with duration at bottom
+	// Response tab: text display with duration and copy button at bottom
 	responseTabContent := container.NewBorder(
 		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
-			p.durationLabel,
+			container.NewBorder(nil, nil, p.durationLabel, p.copyBtn),
 		),
 		nil,
 		nil,

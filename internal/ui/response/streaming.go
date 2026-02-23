@@ -2,10 +2,12 @@ package response
 
 import (
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -18,6 +20,7 @@ const (
 type StreamingMessagesWidget struct {
 	widget.BaseWidget
 
+	window        fyne.Window
 	messages      binding.UntypedList // []string (JSON messages)
 	messageList   *widget.List
 	autoScroll    bool
@@ -26,6 +29,7 @@ type StreamingMessagesWidget struct {
 	// Status section
 	statusLabel *widget.Label
 	stopBtn     *widget.Button
+	copyAllBtn  *widget.Button
 	statusBox   *fyne.Container
 
 	// Main container
@@ -36,8 +40,9 @@ type StreamingMessagesWidget struct {
 }
 
 // NewStreamingMessagesWidget creates a new streaming messages widget.
-func NewStreamingMessagesWidget() *StreamingMessagesWidget {
+func NewStreamingMessagesWidget(window fyne.Window) *StreamingMessagesWidget {
 	w := &StreamingMessagesWidget{
+		window:     window,
 		messages:   binding.NewUntypedList(),
 		autoScroll: true,
 	}
@@ -60,12 +65,27 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 	w.stopBtn.Importance = widget.DangerImportance
 	w.stopBtn.Disable() // Disabled by default until streaming starts
 
-	// Status box (label + stop button)
+	// Copy all button
+	w.copyAllBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		all, err := w.messages.Get()
+		if err != nil || len(all) == 0 {
+			return
+		}
+		var msgs []string
+		for _, item := range all {
+			if s, ok := item.(string); ok {
+				msgs = append(msgs, s)
+			}
+		}
+		w.window.Clipboard().SetContent(strings.Join(msgs, "\n"))
+	})
+
+	// Status box (label + stop button + copy button)
 	w.statusBox = container.NewBorder(
 		nil,
 		nil,
 		nil,
-		w.stopBtn,
+		container.NewHBox(w.copyAllBtn, w.stopBtn),
 		w.statusLabel,
 	)
 
