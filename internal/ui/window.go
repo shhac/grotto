@@ -13,6 +13,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
@@ -177,7 +178,12 @@ func (w *MainWindow) wireCallbacks() {
 		w.applyWorkspaceState(workspace)
 	})
 
-	// History replay
+	// History: click to load (without sending)
+	w.historyPanel.SetOnSelect(func(entry domain.HistoryEntry) {
+		w.handleHistoryLoad(entry)
+	})
+
+	// History: replay (connect + load + send)
 	w.historyPanel.SetOnReplay(func(entry domain.HistoryEntry) {
 		w.handleHistoryReplay(entry)
 	})
@@ -1329,56 +1335,171 @@ func (w *MainWindow) recordHistoryEntry(address, method, requestJSON string, req
 	}()
 }
 
-// handleHistoryReplay replays a request from history
-func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
-	w.logger.Info("replaying history entry",
+// handleHistoryLoad loads a history entry into the UI without sending.
+// It sets the connection, selects the method, and fills request data.
+func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
+	w.logger.Info("loading history entry",
 		slog.String("id", entry.ID),
 		slog.String("method", entry.Method),
 	)
-
-	// Connect to the server if not already connected
-	currentServer, _ := w.state.CurrentServer.Get()
-	if currentServer != entry.Connection.Address {
-		w.logger.Info("connecting to historical server", slog.String("address", entry.Connection.Address))
-		w.connectionBar.SetAddress(entry.Connection.Address)
-		w.connectionBar.SetTLSSettings(entry.Connection.TLS)
-		w.handleConnect(entry.Connection.Address, entry.Connection.TLS)
-
-		// Give connection time to establish
-		// In a real implementation, we'd wait for the connection state callback
-		time.Sleep(2 * time.Second)
-	}
 
 	// Parse the method to extract service and method names
 	// Format: "package.Service/Method"
 	parts := strings.Split(entry.Method, "/")
 	if len(parts) != 2 {
 		w.logger.Error("invalid method format in history entry", slog.String("method", entry.Method))
-		dialog.ShowError(fmt.Errorf("invalid method format: %s", entry.Method), w.window)
+		fyne.Do(func() {
+			dialog.ShowError(fmt.Errorf("invalid method format: %s", entry.Method), w.window)
+		})
 		return
 	}
 
 	serviceName := parts[0]
 	methodName := parts[1]
 
-	// Set selected service and method
-	_ = w.state.SelectedService.Set(serviceName)
-	_ = w.state.SelectedMethod.Set(methodName)
+	// afterConnect is called once we know the server is connected and services
+	// are loaded. It selects the method, fills request data, and optionally sends.
+	afterConnect := func(andSend bool) {
+		fyne.Do(func() {
+			// Select the method in the service browser — this triggers
+			// handleMethodSelect which rebuilds the request form and proto descriptors.
+			w.serviceBrowser.SelectMethod(serviceName, methodName)
 
-	// Set request body
-	_ = w.state.Request.TextData.Set(entry.Request)
+			// Set request body AFTER SetMethod (which clears TextData)
+			_ = w.state.Request.TextData.Set(entry.Request)
 
-	// Set request metadata
-	metadataList := []string{}
-	for key, value := range entry.Metadata.Request {
-		metadataList = append(metadataList, key, value)
+			// Set metadata on the request panel's internal bindings
+			w.requestPanel.SetMetadata(entry.Metadata.Request)
+
+			w.logger.Info("history entry loaded into request panel")
+
+			if andSend {
+				w.requestPanel.TriggerSend()
+			}
+		})
 	}
-	_ = w.state.Request.Metadata.Set(metadataList)
 
-	// Refresh UI to show the replayed request
-	w.serviceBrowser.Refresh()
+	// Check if we need to connect to a different server
+	currentServer, _ := w.state.CurrentServer.Get()
+	needsConnect := currentServer != entry.Connection.Address
 
-	w.logger.Info("history entry loaded into request panel - ready to send")
+	if needsConnect {
+		w.logger.Info("connecting to historical server", slog.String("address", entry.Connection.Address))
+		w.connectionBar.SetAddress(entry.Connection.Address)
+		w.connectionBar.SetTLSSettings(entry.Connection.TLS)
+		w.handleConnect(entry.Connection.Address, entry.Connection.TLS)
+
+		// Wait for connection to complete by listening for state changes
+		go func() {
+			done := make(chan struct{})
+			var listener binding.DataListener
+			listener = binding.NewDataListener(func() {
+				state, _ := w.connState.State.Get()
+				switch state {
+				case "connected":
+					w.connState.State.RemoveListener(listener)
+					close(done)
+				case "error":
+					w.connState.State.RemoveListener(listener)
+					close(done)
+				}
+			})
+			w.connState.State.AddListener(listener)
+
+			// Timeout after 30 seconds
+			select {
+			case <-done:
+				state, _ := w.connState.State.Get()
+				if state == "connected" {
+					afterConnect(false)
+				} else {
+					w.logger.Error("connection failed while loading history entry")
+				}
+			case <-time.After(30 * time.Second):
+				w.connState.State.RemoveListener(listener)
+				w.logger.Error("timed out waiting for connection while loading history entry")
+			}
+		}()
+	} else {
+		afterConnect(false)
+	}
+}
+
+// handleHistoryReplay replays a request from history: connects, loads, and sends.
+func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
+	w.logger.Info("replaying history entry",
+		slog.String("id", entry.ID),
+		slog.String("method", entry.Method),
+	)
+
+	// Parse the method to extract service and method names
+	parts := strings.Split(entry.Method, "/")
+	if len(parts) != 2 {
+		w.logger.Error("invalid method format in history entry", slog.String("method", entry.Method))
+		fyne.Do(func() {
+			dialog.ShowError(fmt.Errorf("invalid method format: %s", entry.Method), w.window)
+		})
+		return
+	}
+
+	serviceName := parts[0]
+	methodName := parts[1]
+
+	// afterConnect selects the method, fills request data, and triggers send.
+	afterConnect := func() {
+		fyne.Do(func() {
+			w.serviceBrowser.SelectMethod(serviceName, methodName)
+			_ = w.state.Request.TextData.Set(entry.Request)
+			w.requestPanel.SetMetadata(entry.Metadata.Request)
+
+			w.logger.Info("history entry loaded - triggering send")
+			w.requestPanel.TriggerSend()
+		})
+	}
+
+	// Check if we need to connect to a different server
+	currentServer, _ := w.state.CurrentServer.Get()
+	needsConnect := currentServer != entry.Connection.Address
+
+	if needsConnect {
+		w.logger.Info("connecting to historical server", slog.String("address", entry.Connection.Address))
+		w.connectionBar.SetAddress(entry.Connection.Address)
+		w.connectionBar.SetTLSSettings(entry.Connection.TLS)
+		w.handleConnect(entry.Connection.Address, entry.Connection.TLS)
+
+		// Wait for connection to complete by listening for state changes
+		go func() {
+			done := make(chan struct{})
+			var listener binding.DataListener
+			listener = binding.NewDataListener(func() {
+				state, _ := w.connState.State.Get()
+				switch state {
+				case "connected":
+					w.connState.State.RemoveListener(listener)
+					close(done)
+				case "error":
+					w.connState.State.RemoveListener(listener)
+					close(done)
+				}
+			})
+			w.connState.State.AddListener(listener)
+
+			select {
+			case <-done:
+				state, _ := w.connState.State.Get()
+				if state == "connected" {
+					afterConnect()
+				} else {
+					w.logger.Error("connection failed while replaying history entry")
+				}
+			case <-time.After(30 * time.Second):
+				w.connState.State.RemoveListener(listener)
+				w.logger.Error("timed out waiting for connection while replaying history entry")
+			}
+		}()
+	} else {
+		afterConnect()
+	}
 }
 
 // toggleConnection toggles between connected and disconnected states.

@@ -29,6 +29,7 @@ type HistoryPanel struct {
 
 	// Callbacks
 	onReplay func(entry domain.HistoryEntry)
+	onSelect func(entry domain.HistoryEntry)
 
 	// Content container
 	content *fyne.Container
@@ -129,6 +130,30 @@ func (p *HistoryPanel) buildUI() {
 		},
 	)
 
+	// Click-to-load: tapping a row loads the entry into the UI
+	p.listWidget.OnSelected = func(id widget.ListItemID) {
+		if p.onSelect == nil {
+			return
+		}
+		val, err := p.historyList.GetItem(id)
+		if err != nil {
+			p.logger.Error("failed to get history item on select", slog.Any("error", err))
+			return
+		}
+		entry := val.(binding.Untyped)
+		v, err := entry.Get()
+		if err != nil {
+			p.logger.Error("failed to get history entry on select", slog.Any("error", err))
+			return
+		}
+		historyEntry, ok := v.(domain.HistoryEntry)
+		if ok {
+			p.onSelect(historyEntry)
+		}
+		// Deselect so the same item can be tapped again
+		p.listWidget.UnselectAll()
+	}
+
 	// Header with status and clear button
 	header := container.NewBorder(
 		nil,           // top
@@ -158,7 +183,9 @@ func (p *HistoryPanel) Refresh() {
 	entries, err := p.storage.GetHistory(100)
 	if err != nil {
 		p.logger.Error("failed to load history", slog.Any("error", err))
-		p.statusLabel.SetText("History (error)")
+		fyne.Do(func() {
+			p.statusLabel.SetText("History (error)")
+		})
 		return
 	}
 
@@ -173,8 +200,15 @@ func (p *HistoryPanel) Refresh() {
 		return
 	}
 
-	p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(entries)))
+	fyne.Do(func() {
+		p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(entries)))
+	})
 	p.logger.Debug("history refreshed", slog.Int("count", len(entries)))
+}
+
+// SetOnSelect sets the callback when user clicks a history item (load without sending)
+func (p *HistoryPanel) SetOnSelect(fn func(entry domain.HistoryEntry)) {
+	p.onSelect = fn
 }
 
 // SetOnReplay sets the callback when user clicks replay

@@ -337,6 +337,18 @@ func (p *RequestPanel) getMetadata() map[string]string {
 	return metadata
 }
 
+// SetMetadata replaces the metadata entries displayed in the UI.
+func (p *RequestPanel) SetMetadata(metadata map[string]string) {
+	keys := make([]string, 0, len(metadata))
+	vals := make([]string, 0, len(metadata))
+	for k, v := range metadata {
+		keys = append(keys, k)
+		vals = append(vals, v)
+	}
+	_ = p.metadataKeys.Set(keys)
+	_ = p.metadataVals.Set(vals)
+}
+
 // TriggerSend programmatically triggers the send action (for keyboard shortcut)
 func (p *RequestPanel) TriggerSend() {
 	p.handleSend()

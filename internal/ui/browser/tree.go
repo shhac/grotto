@@ -86,6 +86,14 @@ func (b *ServiceBrowser) Refresh() {
 	b.tree.Refresh()
 }
 
+// SelectMethod programmatically opens a service branch and selects a method node.
+// This triggers onTreeSelected which calls onMethodSelect.
+func (b *ServiceBrowser) SelectMethod(serviceName, methodName string) {
+	b.tree.OpenBranch(serviceName)
+	uid := fmt.Sprintf("%s:%s", serviceName, methodName)
+	b.tree.Select(uid)
+}
+
 // FocusTree moves keyboard focus to the service tree widget.
 func (b *ServiceBrowser) FocusTree() {
 	if c := fyne.CurrentApp().Driver().CanvasForObject(b.tree); c != nil {
