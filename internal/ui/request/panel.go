@@ -347,6 +347,7 @@ func (p *RequestPanel) SetMetadata(metadata map[string]string) {
 	}
 	_ = p.metadataKeys.Set(keys)
 	_ = p.metadataVals.Set(vals)
+	p.metadataList.Refresh()
 }
 
 // TriggerSend programmatically triggers the send action (for keyboard shortcut)

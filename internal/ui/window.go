@@ -1364,8 +1364,11 @@ func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
 			// Select the method in the service browser — this triggers
 			// handleMethodSelect which rebuilds the request form and proto descriptors.
 			w.serviceBrowser.SelectMethod(serviceName, methodName)
+		})
 
-			// Set request body AFTER SetMethod (which clears TextData)
+		// Set request body in a separate fyne.Do to ensure it runs AFTER
+		// SelectMethod's OnSelected callback (which clears TextData via SetMethod).
+		fyne.Do(func() {
 			_ = w.state.Request.TextData.Set(entry.Request)
 
 			// Set metadata on the request panel's internal bindings
