@@ -19,6 +19,7 @@ type FormBuilder struct {
 	mapFields      map[string]*MapFieldWidget
 	nestedFields   map[string]*NestedMessageWidget
 	oneofFields    map[string]*OneofWidget
+	optionalFields map[string]*OptionalFieldWidget // Proto3 optional + single-member oneofs
 	container      *fyne.Container
 }
 
@@ -31,6 +32,7 @@ func NewFormBuilder(md protoreflect.MessageDescriptor) *FormBuilder {
 		mapFields:      make(map[string]*MapFieldWidget),
 		nestedFields:   make(map[string]*NestedMessageWidget),
 		oneofFields:    make(map[string]*OneofWidget),
+		optionalFields: make(map[string]*OptionalFieldWidget),
 	}
 }
 
@@ -50,6 +52,8 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 			continue
 		}
 
+		isOptional := fd.ContainingOneof() != nil && fd.ContainingOneof().IsSynthetic()
+
 		// Handle different field types
 		if fd.IsList() {
 			// Repeated field
@@ -62,6 +66,14 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 			mapWidget := NewMapFieldWidget(fieldName, fd)
 			b.mapFields[fieldName] = mapWidget
 			items = append(items, mapWidget)
+
+		} else if isOptional {
+			// Proto3 optional field — wrap in presence toggle
+			optWidget := b.createOptionalForField(fd)
+			if optWidget != nil {
+				b.optionalFields[fieldName] = optWidget
+				items = append(items, optWidget)
+			}
 
 		} else if fd.Kind() == protoreflect.MessageKind {
 			// Check if it's a well-known type
@@ -116,11 +128,22 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 		if od.IsSynthetic() {
 			continue
 		}
-		oneofName := string(od.Name())
 
-		oneofWidget := NewOneofWidget(oneofName, od)
-		b.oneofFields[oneofName] = oneofWidget
-		items = append(items, oneofWidget)
+		if od.Fields().Len() == 1 {
+			// Single-member oneof: use toggle instead of useless dropdown
+			fd := od.Fields().Get(0)
+			fieldName := string(fd.Name())
+			optWidget := b.createOptionalForField(fd)
+			if optWidget != nil {
+				b.optionalFields[fieldName] = optWidget
+				items = append(items, optWidget)
+			}
+		} else {
+			oneofName := string(od.Name())
+			oneofWidget := NewOneofWidget(oneofName, od)
+			b.oneofFields[oneofName] = oneofWidget
+			items = append(items, oneofWidget)
+		}
 	}
 
 	// If no fields, show placeholder
@@ -200,6 +223,14 @@ func (b *FormBuilder) GetValues() map[string]interface{} {
 		}
 	}
 
+	// Collect optional field values (proto3 optional + single-member oneofs).
+	// When enabled, include the value even if zero — this preserves field presence.
+	for name, ofw := range b.optionalFields {
+		if ofw.IsEnabled() {
+			values[name] = ofw.GetValue()
+		}
+	}
+
 	return values
 }
 
@@ -245,6 +276,15 @@ func (b *FormBuilder) SetValues(values map[string]interface{}) {
 				ofw.SetValue(fieldName, val)
 				break
 			}
+		}
+	}
+
+	// Set optional field values — toggle on if present, off if absent
+	for name, ofw := range b.optionalFields {
+		if val, ok := values[name]; ok {
+			ofw.SetValue(val)
+		} else {
+			ofw.SetEnabled(false)
 		}
 	}
 }
@@ -320,6 +360,33 @@ func (b *FormBuilder) Clear() {
 	for _, ofw := range b.oneofFields {
 		ofw.Clear()
 	}
+
+	// Clear optional fields
+	for _, ofw := range b.optionalFields {
+		ofw.Clear()
+	}
+}
+
+// createOptionalForField creates an OptionalFieldWidget for a field descriptor.
+// Used for proto3 optional fields and single-member oneofs.
+func (b *FormBuilder) createOptionalForField(fd protoreflect.FieldDescriptor) *OptionalFieldWidget {
+	fieldName := string(fd.Name())
+	if fd.Kind() == protoreflect.MessageKind {
+		if isWellKnownType(fd) {
+			fw := MapFieldToWidget(fd)
+			if fw != nil {
+				return NewOptionalScalarWidget(fw)
+			}
+		} else {
+			return NewOptionalNestedWidget(fieldName, fd.Message())
+		}
+	} else {
+		fw := MapFieldToWidget(fd)
+		if fw != nil {
+			return NewOptionalScalarWidget(fw)
+		}
+	}
+	return nil
 }
 
 // populateMessage sets field values from a map to a proto message
