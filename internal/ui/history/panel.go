@@ -99,7 +99,7 @@ func (p *HistoryPanel) buildUI() {
 
 			// Update UI elements
 			border := obj.(*fyne.Container)
-			rightButton := border.Objects[4].(*widget.Button)
+			rightButton := border.Objects[1].(*widget.Button)
 			centerBox := border.Objects[0].(*fyne.Container)
 			topRow := centerBox.Objects[0].(*fyne.Container)
 			methodLabel := centerBox.Objects[1].(*widget.Label)
