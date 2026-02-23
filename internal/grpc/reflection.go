@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
+	"unicode"
 
 	"github.com/jhump/protoreflect/v2/grpcreflect"
 	"github.com/shhac/grotto/internal/domain"
@@ -78,7 +80,7 @@ func (r *ReflectionClient) ListServices(ctx context.Context) ([]domain.Service, 
 				services = append(services, domain.Service{
 					Name:     string(serviceName.Name()),
 					FullName: string(serviceName),
-					Error:    err.Error(),
+					Error:    fmt.Sprintf("%s\n\nLenient: %s", err.Error(), lenientErr.Error()),
 				})
 				continue
 			}
@@ -230,6 +232,14 @@ func (r *ReflectionClient) lenientResolve(ctx context.Context, serviceName strin
 		}
 	}
 
+	for _, fd := range fdProtos {
+		r.logger.Debug("lenient resolve: received file descriptor",
+			slog.String("file", fd.GetName()),
+			slog.String("package", fd.GetPackage()),
+			slog.Any("deps", fd.GetDependency()),
+		)
+	}
+
 	// Fetch missing dependencies not available locally
 	needed := map[string]bool{}
 	for _, fd := range fdProtos {
@@ -269,17 +279,59 @@ func (r *ReflectionClient) lenientResolve(ctx context.Context, serviceName strin
 		}
 	}
 
-	// Build file descriptors with lenient options
+	localFiles, err := buildFileDescriptors(fdProtos, r.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Search the built registry for the target service
+	var serviceDesc protoreflect.ServiceDescriptor
+	localFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		for i := range fd.Services().Len() {
+			sd := fd.Services().Get(i)
+			if string(sd.FullName()) == serviceName {
+				serviceDesc = sd
+				return false
+			}
+		}
+		return true
+	})
+
+	if serviceDesc == nil {
+		return nil, fmt.Errorf("service %s not found after lenient parsing", serviceName)
+	}
+
+	return serviceDesc, nil
+}
+
+// buildFileDescriptors iteratively builds protoreflect FileDescriptors from raw
+// FileDescriptorProtos using lenient options. It handles dependency ordering and
+// fixes missing imports on failure. Returns the registry of successfully built files.
+func buildFileDescriptors(fdProtos []*descriptorpb.FileDescriptorProto, logger *slog.Logger) (*protoregistry.Files, error) {
 	opts := protodesc.FileOptions{AllowUnresolvable: true}
 	localFiles := new(protoregistry.Files)
 	resolver := &combinedResolver{local: localFiles, global: protoregistry.GlobalFiles}
 
-	// Iteratively parse files (deps before dependents)
+	// Pre-fix malformed descriptors before building
+	for _, fd := range fdProtos {
+		if fixMapEntryNames(fd) {
+			logger.Debug("fixed malformed map entry names",
+				slog.String("file", fd.GetName()),
+			)
+		}
+		if fixReservedRanges(fd) {
+			logger.Debug("fixed malformed reserved ranges",
+				slog.String("file", fd.GetName()),
+			)
+		}
+	}
+
 	remaining := make([]*descriptorpb.FileDescriptorProto, len(fdProtos))
 	copy(remaining, fdProtos)
 
-	var serviceDesc protoreflect.ServiceDescriptor
+	iteration := 0
 	for len(remaining) > 0 {
+		iteration++
 		progress := false
 		var next []*descriptorpb.FileDescriptorProto
 
@@ -296,41 +348,67 @@ func (r *ReflectionClient) lenientResolve(ctx context.Context, serviceName strin
 
 			parsed, err := opts.New(fd, resolver)
 			if err != nil {
+				firstErr := err
+				if fixMissingImports(fd, resolver, logger) {
+					logger.Debug("fixMissingImports: injected imports",
+						slog.String("file", fd.GetName()),
+						slog.Any("deps", fd.GetDependency()),
+					)
+					parsed, err = opts.New(fd, resolver)
+					if err != nil {
+						logger.Debug("build still failed after import fix",
+							slog.String("file", fd.GetName()),
+							slog.String("first_error", firstErr.Error()),
+							slog.String("retry_error", err.Error()),
+						)
+					}
+				}
+			}
+			if err != nil {
 				next = append(next, fd)
 				continue
 			}
 			progress = true
 			if regErr := localFiles.RegisterFile(parsed); regErr != nil {
-				r.logger.Debug("failed to register lenient file",
+				logger.Debug("failed to register lenient file",
 					slog.String("file", fd.GetName()),
 					slog.Any("error", regErr),
 				)
 				continue
 			}
-
-			// Check if this file contains our service
-			for i := range parsed.Services().Len() {
-				sd := parsed.Services().Get(i)
-				if string(sd.FullName()) == serviceName {
-					serviceDesc = sd
-				}
-			}
+			logger.Debug("successfully built file",
+				slog.String("file", fd.GetName()),
+				slog.Int("iteration", iteration),
+			)
 		}
 
 		remaining = next
 		if !progress {
+			for _, fd := range remaining {
+				_, lastErr := opts.New(fd, resolver)
+				logger.Warn("file stuck after all retries",
+					slog.String("file", fd.GetName()),
+					slog.Any("deps", fd.GetDependency()),
+					slog.Any("error", lastErr),
+					slog.Int("local_files", localFiles.NumFiles()),
+				)
+			}
 			break
 		}
 	}
 
-	if serviceDesc == nil {
-		return nil, fmt.Errorf("service %s not found after lenient parsing", serviceName)
+	if localFiles.NumFiles() == 0 {
+		return nil, fmt.Errorf("no files could be built from %d protos", len(fdProtos))
 	}
 
-	return serviceDesc, nil
+	return localFiles, nil
 }
 
-// combinedResolver tries local files first, then falls back to global registry.
+// combinedResolver merges local (server-provided) files with the global registry.
+// FindFileByPath checks local first (server files may have non-canonical paths).
+// FindDescriptorByName checks global first so canonical type definitions always
+// win over non-canonical server duplicates (e.g., google_protobuf.proto defining
+// google.protobuf.Timestamp should not shadow google/protobuf/timestamp.proto).
 type combinedResolver struct {
 	local  *protoregistry.Files
 	global *protoregistry.Files
@@ -344,10 +422,264 @@ func (r *combinedResolver) FindFileByPath(path string) (protoreflect.FileDescrip
 }
 
 func (r *combinedResolver) FindDescriptorByName(name protoreflect.FullName) (protoreflect.Descriptor, error) {
-	if d, err := r.local.FindDescriptorByName(name); err == nil {
+	if d, err := r.global.FindDescriptorByName(name); err == nil {
 		return d, nil
 	}
-	return r.global.FindDescriptorByName(name)
+	return r.local.FindDescriptorByName(name)
+}
+
+// fixMissingImports scans a FileDescriptorProto for type references, resolves
+// them against the given resolver, and adds any missing parent file imports.
+// This handles servers that reference types without declaring the corresponding
+// import, which causes protodesc.NewFile to fail with "resolved X, but Y is
+// not imported". Returns true if any imports were added.
+//
+// Type references may be fully-qualified (".pkg.Type") or relative ("Type",
+// "sub.Type"). Relative refs are resolved using proto scoping rules: the file's
+// package is progressively stripped to find a matching fully-qualified name.
+func fixMissingImports(fd *descriptorpb.FileDescriptorProto, r protodesc.Resolver, logger *slog.Logger) bool {
+	existing := make(map[string]bool, len(fd.GetDependency()))
+	for _, d := range fd.GetDependency() {
+		existing[d] = true
+	}
+
+	refs := collectTypeRefs(fd)
+	logger.Debug("fixMissingImports: collected type refs",
+		slog.String("file", fd.GetName()),
+		slog.Int("ref_count", len(refs)),
+		slog.Any("refs", refs),
+	)
+
+	pkg := fd.GetPackage()
+	added := false
+	for _, ref := range refs {
+		name := strings.TrimPrefix(ref, ".")
+		if name == "" {
+			continue
+		}
+		d := resolveTypeRef(name, pkg, r)
+		if d == nil {
+			continue
+		}
+		filePath := d.ParentFile().Path()
+		if !existing[filePath] {
+			logger.Debug("fixMissingImports: adding import",
+				slog.String("file", fd.GetName()),
+				slog.String("type", name),
+				slog.String("resolved_from", string(filePath)),
+			)
+			fd.Dependency = append(fd.Dependency, filePath)
+			existing[filePath] = true
+			added = true
+		}
+	}
+	return added
+}
+
+// resolveTypeRef resolves a type reference that may be relative using proto
+// scoping rules. For a relative ref like "types.Money" in package "acme.svc.v1",
+// it tries: acme.svc.v1.types.Money, acme.svc.types.Money, acme.types.Money,
+// types.Money — returning the first match.
+func resolveTypeRef(name, pkg string, r protodesc.Resolver) protoreflect.Descriptor {
+	// Try as-is first (handles already-qualified names like "google.protobuf.Timestamp")
+	if d, err := r.FindDescriptorByName(protoreflect.FullName(name)); err == nil {
+		return d
+	}
+	// Try with package prefix scoping: prepend progressively shorter package prefixes
+	for pkg != "" {
+		candidate := pkg + "." + name
+		if d, err := r.FindDescriptorByName(protoreflect.FullName(candidate)); err == nil {
+			return d
+		}
+		// Strip the last package segment
+		if i := strings.LastIndex(pkg, "."); i >= 0 {
+			pkg = pkg[:i]
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
+// collectTypeRefs collects all type name references from a FileDescriptorProto,
+// including nested messages (which covers map entry types), extensions, and
+// service method input/output types.
+func collectTypeRefs(fd *descriptorpb.FileDescriptorProto) []string {
+	var refs []string
+	for _, msg := range fd.GetMessageType() {
+		collectMessageTypeRefs(msg, &refs)
+	}
+	for _, ext := range fd.GetExtension() {
+		collectFieldTypeRef(ext, &refs)
+	}
+	for _, svc := range fd.GetService() {
+		for _, m := range svc.GetMethod() {
+			if t := m.GetInputType(); t != "" {
+				refs = append(refs, t)
+			}
+			if t := m.GetOutputType(); t != "" {
+				refs = append(refs, t)
+			}
+		}
+	}
+	return refs
+}
+
+// collectMessageTypeRefs recursively collects type references from a message,
+// including its fields, extensions, and nested types.
+func collectMessageTypeRefs(msg *descriptorpb.DescriptorProto, refs *[]string) {
+	for _, field := range msg.GetField() {
+		collectFieldTypeRef(field, refs)
+	}
+	for _, ext := range msg.GetExtension() {
+		collectFieldTypeRef(ext, refs)
+	}
+	for _, nested := range msg.GetNestedType() {
+		collectMessageTypeRefs(nested, refs)
+	}
+}
+
+// collectFieldTypeRef appends a field's TypeName and Extendee (if non-empty) to refs.
+func collectFieldTypeRef(field *descriptorpb.FieldDescriptorProto, refs *[]string) {
+	if t := field.GetTypeName(); t != "" {
+		*refs = append(*refs, t)
+	}
+	if t := field.GetExtendee(); t != "" {
+		*refs = append(*refs, t)
+	}
+}
+
+// fixMapEntryNames fixes malformed map entry message names in a FileDescriptorProto.
+// Some servers (e.g., those using non-standard proto tooling) produce map entries
+// with names that don't match protobuf's expected convention of CamelCase(field_name)+"Entry".
+// For example, a field "competitions" might have entry "CompetitionEntry" instead of
+// "CompetitionsEntry". protodesc rejects these with "incorrect implicit map entry name".
+func fixMapEntryNames(fd *descriptorpb.FileDescriptorProto) bool {
+	pkg := fd.GetPackage()
+	fixed := false
+	for _, msg := range fd.GetMessageType() {
+		fqn := pkg
+		if fqn != "" {
+			fqn += "."
+		}
+		fqn += msg.GetName()
+		if fixMapEntriesInMessage(msg, fqn) {
+			fixed = true
+		}
+	}
+	return fixed
+}
+
+func fixMapEntriesInMessage(msg *descriptorpb.DescriptorProto, fqn string) bool {
+	fixed := false
+
+	// Recurse into nested types (non-map-entry messages can also have map fields)
+	for _, nested := range msg.GetNestedType() {
+		if nested.GetOptions().GetMapEntry() {
+			continue
+		}
+		nestedFQN := fqn + "." + nested.GetName()
+		if fixMapEntriesInMessage(nested, nestedFQN) {
+			fixed = true
+		}
+	}
+
+	// For each field, check if it references a map entry with wrong name.
+	// TypeNames may be fully-qualified (".pkg.Msg.Entry") or relative ("Entry",
+	// "Msg.Entry") depending on the server's proto tooling.
+	for _, field := range msg.GetField() {
+		typeName := field.GetTypeName()
+		if typeName == "" {
+			continue
+		}
+
+		// Find the map entry nested type this field references
+		for _, nested := range msg.GetNestedType() {
+			if !nested.GetOptions().GetMapEntry() {
+				continue
+			}
+			entryName := nested.GetName()
+			absRef := "." + fqn + "." + entryName
+
+			// Match both absolute and relative TypeName forms
+			if typeName != absRef && typeName != entryName &&
+				!strings.HasSuffix(absRef, "."+typeName) {
+				continue
+			}
+
+			// This field references this map entry. Check the name.
+			expectedName := mapEntryName(field.GetName())
+			if entryName == expectedName {
+				break // already correct
+			}
+			// Fix the entry name
+			nested.Name = &expectedName
+			// Update field's TypeName, preserving relative/absolute form
+			if typeName == absRef {
+				correctRef := "." + fqn + "." + expectedName
+				field.TypeName = &correctRef
+			} else {
+				// Replace the last path component (the entry name) with the corrected one
+				correctRef := strings.TrimSuffix(typeName, entryName) + expectedName
+				field.TypeName = &correctRef
+			}
+			fixed = true
+			break
+		}
+	}
+	return fixed
+}
+
+// fixReservedRanges fixes invalid reserved ranges in all messages of a FileDescriptorProto.
+// Some servers produce ranges where end <= start (e.g., start=2, end=2), which is invalid
+// because protobuf reserved ranges are end-exclusive: [start, end). We fix these by
+// setting end = start + 1 to reserve the single field number.
+func fixReservedRanges(fd *descriptorpb.FileDescriptorProto) bool {
+	fixed := false
+	for _, msg := range fd.GetMessageType() {
+		if fixReservedRangesInMessage(msg) {
+			fixed = true
+		}
+	}
+	return fixed
+}
+
+func fixReservedRangesInMessage(msg *descriptorpb.DescriptorProto) bool {
+	fixed := false
+	for _, r := range msg.GetReservedRange() {
+		if r.GetEnd() <= r.GetStart() {
+			corrected := r.GetStart() + 1
+			r.End = &corrected
+			fixed = true
+		}
+	}
+	for _, nested := range msg.GetNestedType() {
+		if fixReservedRangesInMessage(nested) {
+			fixed = true
+		}
+	}
+	return fixed
+}
+
+// mapEntryName computes the expected map entry message name for a field,
+// matching protobuf's convention: capitalize each underscore-separated segment
+// and append "Entry". E.g., "foo_bar" → "FooBarEntry".
+func mapEntryName(fieldName string) string {
+	var b []byte
+	upperNext := true
+	for _, c := range fieldName {
+		if c == '_' {
+			upperNext = true
+			continue
+		}
+		if upperNext {
+			b = append(b, byte(unicode.ToUpper(c)))
+			upperNext = false
+		} else {
+			b = append(b, byte(c))
+		}
+	}
+	return string(b) + "Entry"
 }
 
 // convertService converts a protoreflect ServiceDescriptor to domain.Service
