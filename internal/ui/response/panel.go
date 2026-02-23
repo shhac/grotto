@@ -25,7 +25,7 @@ type ResponsePanel struct {
 
 	// Select mode: toggle between colored RichText and selectable Entry
 	selectMode   bool
-	selectEntry  *widget.Entry
+	selectEntry  *ReadOnlyEntry
 	selectToggle *widget.Button
 	displayStack *fyne.Container // swaps between jsonScroll and selectEntry
 
@@ -84,13 +84,11 @@ func (p *ResponsePanel) initializeComponents() {
 	})
 	p.copyBtn.Hide()
 
-	// Select mode: disabled Entry for text selection
-	p.selectEntry = widget.NewMultiLineEntry()
-	p.selectEntry.Wrapping = fyne.TextWrapWord
-	p.selectEntry.Disable()
+	// Select mode: read-only Entry for text selection (full contrast, no edits)
+	p.selectEntry = NewReadOnlyMultiLineEntry()
 
 	// Toggle button to switch between colored display and selectable text
-	p.selectToggle = widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() {
+	p.selectToggle = widget.NewButtonWithIcon("", theme.DocumentIcon(), func() {
 		p.toggleSelectMode()
 	})
 	p.selectToggle.Hide()
@@ -189,7 +187,7 @@ func (p *ResponsePanel) setupBindings() {
 			// Exit select mode when response is cleared
 			if p.selectMode {
 				p.selectMode = false
-				p.selectToggle.SetIcon(theme.ContentCutIcon())
+				p.selectToggle.SetIcon(theme.DocumentIcon())
 				p.displayStack.Objects = []fyne.CanvasObject{p.jsonScroll}
 				p.displayStack.Refresh()
 			}
@@ -292,7 +290,7 @@ func (p *ResponsePanel) toggleSelectMode() {
 	} else {
 		// Switch back to colored display
 		p.displayStack.Objects = []fyne.CanvasObject{p.jsonScroll}
-		p.selectToggle.SetIcon(theme.ContentCutIcon())
+		p.selectToggle.SetIcon(theme.DocumentIcon())
 	}
 	p.displayStack.Refresh()
 }
