@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/storage"
@@ -28,6 +29,12 @@ type HistoryPanel struct {
 	listWidget  *widget.List
 	clearButton *widget.Button
 	statusLabel *widget.Label
+
+	// Filter state
+	filterEntry  *widget.Entry
+	filterQuery  string
+	statusFilter string     // "" (all), "success", or "error"
+	allEntries   []domain.HistoryEntry // full unfiltered entries from storage
 
 	// Callbacks
 	onReplay func(entry domain.HistoryEntry)
@@ -63,6 +70,28 @@ func (p *HistoryPanel) buildUI() {
 		p.handleClearAll()
 	})
 
+	// Filter entry for searching history
+	p.filterEntry = widget.NewEntry()
+	p.filterEntry.SetPlaceHolder("Filter history...")
+	p.filterEntry.OnChanged = func(query string) {
+		p.filterQuery = strings.ToLower(query)
+		p.applyFilter()
+	}
+
+	// Status filter dropdown
+	statusSelect := widget.NewSelect([]string{"All", "Success", "Error"}, func(selected string) {
+		switch selected {
+		case "Success":
+			p.statusFilter = "success"
+		case "Error":
+			p.statusFilter = "error"
+		default:
+			p.statusFilter = ""
+		}
+		p.applyFilter()
+	})
+	statusSelect.SetSelected("All")
+
 	// History list
 	p.listWidget = widget.NewListWithData(
 		p.historyList,
@@ -74,12 +103,13 @@ func (p *HistoryPanel) buildUI() {
 			statusLabel := widget.NewLabel("")
 			durationLabel := widget.NewLabel("")
 			replayButton := widget.NewButton("Replay", nil)
+			deleteButton := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
 
 			return container.NewBorder(
-				nil,          // top
-				nil,          // bottom
-				nil,          // left
-				replayButton, // right
+				nil, // top
+				nil, // bottom
+				nil, // left
+				container.NewHBox(replayButton, deleteButton), // right
 				container.NewVBox(
 					container.NewHBox(timeLabel, statusLabel, durationLabel),
 					methodLabel,
@@ -103,7 +133,9 @@ func (p *HistoryPanel) buildUI() {
 
 			// Update UI elements
 			border := obj.(*fyne.Container)
-			rightButton := border.Objects[1].(*widget.Button)
+			rightBox := border.Objects[1].(*fyne.Container)
+			replayButton := rightBox.Objects[0].(*widget.Button)
+			deleteButton := rightBox.Objects[1].(*widget.Button)
 			centerBox := border.Objects[0].(*fyne.Container)
 			topRow := centerBox.Objects[0].(*fyne.Container)
 			methodLabel := centerBox.Objects[1].(*widget.Label)
@@ -125,10 +157,20 @@ func (p *HistoryPanel) buildUI() {
 			}
 
 			// Replay button
-			rightButton.OnTapped = func() {
+			replayButton.OnTapped = func() {
 				if p.onReplay != nil {
 					p.onReplay(historyEntry)
 				}
+			}
+
+			// Delete button
+			entryID := historyEntry.ID
+			deleteButton.OnTapped = func() {
+				if err := p.storage.DeleteHistoryEntry(entryID); err != nil {
+					p.logger.Error("failed to delete history entry", slog.Any("error", err))
+					return
+				}
+				p.Refresh()
 			}
 		},
 	)
@@ -158,13 +200,22 @@ func (p *HistoryPanel) buildUI() {
 	}
 
 	// Header with status and clear button
-	header := container.NewBorder(
+	headerRow := container.NewBorder(
 		nil,           // top
 		nil,           // bottom
 		p.statusLabel, // left
 		p.clearButton, // right
 		nil,           // center
 	)
+
+	// Filter row with text filter and status dropdown
+	filterRow := container.NewBorder(
+		nil, nil, nil,
+		statusSelect,
+		p.filterEntry,
+	)
+
+	header := container.NewVBox(headerRow, filterRow)
 
 	// Build content
 	p.content = container.NewBorder(
@@ -181,7 +232,7 @@ func (p *HistoryPanel) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(p.content)
 }
 
-// Refresh reloads history from storage
+// Refresh reloads history from storage and applies any active filter
 func (p *HistoryPanel) Refresh() {
 	entries, err := p.storage.GetHistory(100)
 	if err != nil {
@@ -192,9 +243,35 @@ func (p *HistoryPanel) Refresh() {
 		return
 	}
 
-	// Convert to untyped list items
-	items := make([]interface{}, len(entries))
-	for i, entry := range entries {
+	p.allEntries = entries
+	p.applyFilter()
+	p.logger.Debug("history refreshed", slog.Int("count", len(entries)))
+}
+
+// applyFilter filters allEntries by text query and status, then updates the list
+func (p *HistoryPanel) applyFilter() {
+	var filtered []domain.HistoryEntry
+	for _, entry := range p.allEntries {
+		// Status filter
+		if p.statusFilter != "" && entry.Status != p.statusFilter {
+			continue
+		}
+		// Text filter: match against method name, request body, error message
+		if p.filterQuery != "" {
+			method := strings.ToLower(entry.Method)
+			request := strings.ToLower(entry.Request)
+			errMsg := strings.ToLower(entry.Error)
+			if !strings.Contains(method, p.filterQuery) &&
+				!strings.Contains(request, p.filterQuery) &&
+				!strings.Contains(errMsg, p.filterQuery) {
+				continue
+			}
+		}
+		filtered = append(filtered, entry)
+	}
+
+	items := make([]interface{}, len(filtered))
+	for i, entry := range filtered {
 		items[i] = entry
 	}
 
@@ -204,9 +281,12 @@ func (p *HistoryPanel) Refresh() {
 	}
 
 	fyne.Do(func() {
-		p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(entries)))
+		if p.filterQuery != "" || p.statusFilter != "" {
+			p.statusLabel.SetText(fmt.Sprintf("History (%d/%d)", len(filtered), len(p.allEntries)))
+		} else {
+			p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(p.allEntries)))
+		}
 	})
-	p.logger.Debug("history refreshed", slog.Int("count", len(entries)))
 }
 
 // SetOnSelect sets the callback when user clicks a history item (load without sending)

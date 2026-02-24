@@ -18,5 +18,6 @@ type Repository interface {
 	// History operations
 	AddHistoryEntry(entry domain.HistoryEntry) error
 	GetHistory(limit int) ([]domain.HistoryEntry, error)
+	DeleteHistoryEntry(id string) error
 	ClearHistory() error
 }

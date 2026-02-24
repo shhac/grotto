@@ -455,6 +455,27 @@ func (r *JSONRepository) GetHistory(limit int) ([]domain.HistoryEntry, error) {
 	return history, nil
 }
 
+// DeleteHistoryEntry removes a single history entry by ID
+func (r *JSONRepository) DeleteHistoryEntry(id string) error {
+	history, err := r.loadHistoryList()
+	if err != nil {
+		return fmt.Errorf("load history: %w", err)
+	}
+
+	for i, entry := range history {
+		if entry.ID == id {
+			history = append(history[:i], history[i+1:]...)
+			if err := r.saveHistoryList(history); err != nil {
+				return fmt.Errorf("save history: %w", err)
+			}
+			r.logger.Debug("deleted history entry", slog.String("id", id))
+			return nil
+		}
+	}
+
+	return nil // ID not found — idempotent
+}
+
 // ClearHistory removes all history entries
 func (r *JSONRepository) ClearHistory() error {
 	path := r.historyPath()
