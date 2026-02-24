@@ -22,6 +22,7 @@ type ResponsePanel struct {
 	jsonScroll    *fyne.Container // stack of richText + placeholder
 	errorLabel    *widget.Label
 	durationLabel *widget.Label
+	sizeLabel     *widget.Label
 	loadingBar    *widget.ProgressBarInfinite
 	copyBtn       *widget.Button
 
@@ -74,8 +75,9 @@ func (p *ResponsePanel) initializeComponents() {
 	p.placeholder.Alignment = fyne.TextAlignCenter
 	p.jsonScroll = container.NewStack(p.richText, p.placeholder)
 
-	// Duration label
+	// Duration and size labels
 	p.durationLabel = widget.NewLabel("")
+	p.sizeLabel = widget.NewLabel("")
 
 	// Copy button (hidden until there's a response)
 	p.copyBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
@@ -142,7 +144,7 @@ func (p *ResponsePanel) initializeComponents() {
 		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
-			container.NewBorder(nil, nil, p.durationLabel, container.NewHBox(p.selectToggle, p.copyBtn)),
+			container.NewBorder(nil, nil, container.NewHBox(p.durationLabel, p.sizeLabel), container.NewHBox(p.selectToggle, p.copyBtn)),
 		),
 		nil,
 		nil,
@@ -215,8 +217,9 @@ func (p *ResponsePanel) setupBindings() {
 		}
 	}))
 
-	// Bind duration
+	// Bind duration and size
 	p.durationLabel.Bind(p.state.Duration)
+	p.sizeLabel.Bind(p.state.Size)
 
 	// Listen to loading state
 	p.state.Loading.AddListener(binding.NewDataListener(func() {
@@ -266,6 +269,7 @@ func (p *ResponsePanel) SetError(message string) {
 	_ = p.state.Error.Set(message)
 	_ = p.state.TextData.Set("") // Clear response data
 	_ = p.state.Duration.Set("")
+	_ = p.state.Size.Set("")
 }
 
 // SetLoading shows/hides loading indicator (convenience method).
@@ -334,6 +338,7 @@ func (p *ResponsePanel) ClearResponse() {
 	_ = p.state.TextData.Set("")
 	_ = p.state.Error.Set("")
 	_ = p.state.Duration.Set("")
+	_ = p.state.Size.Set("")
 	p.ClearResponseMetadata()
 
 	// If in streaming mode, also clear streaming widget

@@ -64,6 +64,7 @@ type ResponseState struct {
 	Messages  binding.UntypedList // For streaming responses (accumulates messages)
 	Error     binding.String      // Error message if request failed
 	Duration  binding.String      // Request duration (e.g., "123ms")
+	Size      binding.String      // Response body size (e.g., "1.2 KB")
 }
 
 // NewResponseState creates a new ResponseState with initialized bindings.
@@ -85,6 +86,7 @@ func NewResponseState() *ResponseState {
 		Messages:  binding.NewUntypedList(),
 		Error:     binding.NewString(),
 		Duration:  binding.NewString(),
+		Size:      binding.NewString(),
 	}
 }
 

@@ -106,7 +106,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	mw.bidiPanel = bidi.NewBidiStreamPanel()
 	mw.statusBar = uierrors.NewStatusBar(connState)
 	mw.workspacePanel = workspace.NewWorkspacePanel(app.Storage(), app.Logger(), window)
-	mw.historyPanel = history.NewHistoryPanel(app.Storage(), app.Logger())
+	mw.historyPanel = history.NewHistoryPanel(app.Storage(), app.Logger(), window)
 	mw.themeSelector = CreateThemeSelector(fyneApp)
 
 	// Wire up callbacks
@@ -188,6 +188,22 @@ func (w *MainWindow) wireCallbacks() {
 	w.historyPanel.SetOnReplay(func(entry domain.HistoryEntry) {
 		w.handleHistoryReplay(entry)
 	})
+}
+
+// formatByteSize returns a human-readable byte count (e.g., "1.2 KB", "3.4 MB").
+func formatByteSize(bytes int) string {
+	const (
+		kb = 1024
+		mb = kb * 1024
+	)
+	switch {
+	case bytes >= mb:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
 
 // handleConnect establishes a connection and lists services
@@ -447,6 +463,7 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		_ = w.state.Response.TextData.Set("")
 		_ = w.state.Response.Error.Set("")
 		_ = w.state.Response.Duration.Set("")
+		_ = w.state.Response.Size.Set("")
 		w.responsePanel.ClearResponseMetadata()
 
 		// Focus the request editor for immediate typing
@@ -582,6 +599,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 		// Update response (bindings are thread-safe, but widget methods need main thread)
 		_ = w.state.Response.TextData.Set(respJSON)
 		_ = w.state.Response.Duration.Set(fmt.Sprintf("Duration: %v", duration.Round(time.Millisecond)))
+		_ = w.state.Response.Size.Set(formatByteSize(len(respJSON)))
 		_ = w.state.Response.Error.Set("")
 		fyne.Do(func() {
 			w.responsePanel.SetResponseMetadata(respMetadataMap)
@@ -969,6 +987,7 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		// Update response
 		_ = w.state.Response.TextData.Set(respJSON)
 		_ = w.state.Response.Duration.Set(fmt.Sprintf("Duration: %v", duration.Round(time.Millisecond)))
+		_ = w.state.Response.Size.Set(formatByteSize(len(respJSON)))
 		_ = w.state.Response.Error.Set("")
 		fyne.Do(func() {
 			w.expandResponsePanel()
@@ -1613,9 +1632,19 @@ func (w *MainWindow) setupMainMenu() {
 		Modifier: fyne.KeyModifierSuper,
 	}
 
+	focusBrowserItem := fyne.NewMenuItem("Focus Service Browser", func() {
+		w.serviceBrowser.FocusTree()
+	})
+	focusBrowserItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyB,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
 	viewMenu := fyne.NewMenu("View",
 		textModeItem,
 		formModeItem,
+		fyne.NewMenuItemSeparator(),
+		focusBrowserItem,
 	)
 
 	// Help menu - shortcuts reference and about dialog
@@ -1670,6 +1699,7 @@ func (w *MainWindow) handleClearResponse() {
 	_ = w.state.Response.TextData.Set("")
 	_ = w.state.Response.Error.Set("")
 	_ = w.state.Response.Duration.Set("")
+	_ = w.state.Response.Size.Set("")
 	w.responsePanel.ClearResponseMetadata()
 	w.logger.Debug("response panel cleared")
 }
