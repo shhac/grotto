@@ -66,12 +66,13 @@ type MainWindow struct {
 	themeSelector  *widget.Select
 
 	// Streaming state (protected by streamMu)
-	streamMu           sync.Mutex
-	clientStreamHandle *grpc.ClientStreamHandle
-	bidiStreamHandle   *grpc.BidiStreamHandle
-	bidiCancelFunc     context.CancelFunc
-	serverStreamCancel context.CancelFunc
-	unaryCancel        context.CancelFunc
+	streamMu            sync.Mutex
+	clientStreamHandle  *grpc.ClientStreamHandle
+	clientStreamCancel  context.CancelFunc
+	bidiStreamHandle    *grpc.BidiStreamHandle
+	bidiCancelFunc      context.CancelFunc
+	serverStreamCancel  context.CancelFunc
+	unaryCancel         context.CancelFunc
 
 	// Layout state
 	inBidiMode   bool              // avoid unnecessary rebuilds
@@ -306,6 +307,8 @@ func (w *MainWindow) cancelAllStreams() {
 	bidiCancel := w.bidiCancelFunc
 	w.bidiCancelFunc = nil
 	w.bidiStreamHandle = nil
+	clientCancel := w.clientStreamCancel
+	w.clientStreamCancel = nil
 	clientHandle := w.clientStreamHandle
 	w.clientStreamHandle = nil
 	w.streamMu.Unlock()
@@ -319,6 +322,9 @@ func (w *MainWindow) cancelAllStreams() {
 	}
 	if bidiCancel != nil {
 		bidiCancel()
+	}
+	if clientCancel != nil {
+		clientCancel()
 	}
 	if clientHandle != nil {
 		// CloseAndReceive blocks, so run in goroutine
@@ -829,9 +835,10 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 			return
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
 		handle, err := invoker.InvokeClientStream(ctx, methodDesc, md)
 		if err != nil {
+			cancel()
 			w.logger.Error("failed to start client stream", slog.Any("error", err))
 			uierrors.ShowGRPCError(err, w.window, func() {
 				// Retry callback - attempt to start stream again
@@ -842,6 +849,7 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 
 		w.streamMu.Lock()
 		w.clientStreamHandle = handle
+		w.clientStreamCancel = cancel
 		w.streamMu.Unlock()
 		w.logger.Info("client stream started",
 			slog.String("service", serviceName),
@@ -863,10 +871,15 @@ func (w *MainWindow) handleClientStreamSend(jsonStr string, metadataMap map[stri
 			// Retry callback - attempt to send the message again
 			w.handleClientStreamSend(jsonStr, metadataMap)
 		})
-		// Clean up handle on error
+		// Clean up handle and cancel context on error
 		w.streamMu.Lock()
 		w.clientStreamHandle = nil
+		sendErrCancel := w.clientStreamCancel
+		w.clientStreamCancel = nil
 		w.streamMu.Unlock()
+		if sendErrCancel != nil {
+			sendErrCancel()
+		}
 		return
 	}
 
@@ -923,10 +936,15 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		duration := time.Since(startTime)
 		_ = w.state.Response.Loading.Set(false)
 
-		// Clean up handle
+		// Clean up handle and cancel func
 		w.streamMu.Lock()
 		w.clientStreamHandle = nil
+		csCancel := w.clientStreamCancel
+		w.clientStreamCancel = nil
 		w.streamMu.Unlock()
+		if csCancel != nil {
+			csCancel()
+		}
 
 		if err != nil {
 			w.logger.Error("client stream failed", slog.Any("error", err))
