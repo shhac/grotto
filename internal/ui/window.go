@@ -743,6 +743,12 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 				}
 				go w.recordStreamHistoryEntry(currentServer, serviceName+"/"+methodName, jsonStr, metadataMap, duration, streamStatus, streamErr, "server_stream", messageCount)
 
+				// Set duration on the response panel so it's visible in the Response tab
+				durationStr := duration.Round(time.Millisecond).String()
+				fyne.Do(func() {
+					_ = w.state.Response.Duration.Set("Duration: " + durationStr)
+				})
+
 				// Check if this is normal stream completion (io.EOF) or an error
 				if err == io.EOF {
 					w.logger.Info("server stream completed successfully",
@@ -1357,6 +1363,7 @@ func (w *MainWindow) receiveBidiMessages() {
 	}
 
 	duration := time.Since(startTime)
+	durationStr := duration.Round(time.Millisecond).String()
 
 	// Capture trailers and headers
 	trailers := handle.Trailer()
@@ -1364,11 +1371,13 @@ func (w *MainWindow) receiveBidiMessages() {
 
 	// Update UI with final status, headers, and trailers
 	fyne.Do(func() {
+		_ = w.state.Response.Duration.Set("Duration: " + durationStr)
+
 		if streamErr != nil {
 			w.bidiPanel.SetStatus(fmt.Sprintf("Receive error: %s", streamErr.Error()))
 			w.bidiPanel.DisableSendControls()
 		} else {
-			w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages)", messageCount))
+			w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages in %s)", messageCount, durationStr))
 		}
 
 		// Display headers and trailers on the response panel
