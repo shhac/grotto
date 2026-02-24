@@ -72,6 +72,15 @@ func (w *MainWindow) setupKeyboardShortcuts() {
 		w.requestPanel.SwitchToFormMode()
 	})
 
+	// Cmd+B: Focus service browser
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyB,
+		Modifier: fyne.KeyModifierSuper,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: focus service browser")
+		w.serviceBrowser.FocusTree()
+	})
+
 	// Cmd+Shift+C: Toggle connect/disconnect
 	canvas.AddShortcut(&desktop.CustomShortcut{
 		KeyName:  fyne.KeyC,

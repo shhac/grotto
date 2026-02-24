@@ -33,6 +33,7 @@ func ShowShortcutDialog(parent fyne.Window) {
 		{"Save Workspace", "\u2318 S"},
 		{"Load Workspace", "\u2318 O"},
 		{"Focus Address Bar", "\u2318 K"},
+		{"Focus Service Browser", "\u2318 B"},
 		{"Clear Response", "\u2318 L"},
 		{"Text Mode", "\u2318 1"},
 		{"Form Mode", "\u2318 2"},

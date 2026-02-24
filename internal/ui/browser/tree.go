@@ -2,6 +2,7 @@ package browser
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -18,14 +19,15 @@ import (
 type ServiceBrowser struct {
 	widget.BaseWidget
 
-	tree          *widget.Tree
-	services      binding.UntypedList // []domain.Service
-	placeholder   *widget.Label       // shown when no services loaded
-	content       *fyne.Container     // stack switching between placeholder and tree
+	tree        *widget.Tree
+	services    binding.UntypedList // []domain.Service
+	placeholder *widget.Label       // shown when no services loaded
+	content     *fyne.Container     // stack switching between placeholder and tree
 
 	// O(1) service lookup index, rebuilt when services binding changes
 	serviceIndex map[string]domain.Service
 	serviceUIDs  []string
+	displayNames map[string]string // FullName → disambiguated short display name
 
 	// Callbacks
 	onMethodSelect func(service domain.Service, method domain.Method)
@@ -156,18 +158,22 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 			// Error service: show warning icon and indicator
 			icon.Resource = theme.WarningIcon()
 			icon.Refresh()
-			label.SetText(fmt.Sprintf("%s  ⚠", uid))
+			label.SetText(fmt.Sprintf("%s  ⚠", service.Name))
 			label.TextStyle = fyne.TextStyle{Italic: true}
 			label.Importance = widget.WarningImportance
 		} else {
-			// Normal service
+			// Normal service: show short name with method count
+			displayName := uid
+			if service != nil {
+				displayName = service.Name
+			}
 			icon.Resource = theme.FolderIcon()
 			icon.Refresh()
 			methodCount := 0
 			if service != nil {
 				methodCount = len(service.Methods)
 			}
-			label.SetText(fmt.Sprintf("%s  (%d)", uid, methodCount))
+			label.SetText(fmt.Sprintf("%s  (%d)", displayName, methodCount))
 			label.TextStyle = fyne.TextStyle{Bold: true}
 			label.Importance = widget.MediumImportance
 		}
@@ -282,6 +288,7 @@ func (b *ServiceBrowser) rebuildIndex() {
 			uids = append(uids, service.FullName)
 		}
 	}
+	sort.Strings(uids)
 	b.serviceIndex = index
 	b.serviceUIDs = uids
 
@@ -313,11 +320,12 @@ func (b *ServiceBrowser) getMethodUIDs(serviceName string) []string {
 		return []string{}
 	}
 
-	var uids []string
+	uids := make([]string, 0, len(service.Methods))
 	for _, method := range service.Methods {
 		// Format: "service:method"
 		uids = append(uids, fmt.Sprintf("%s:%s", serviceName, method.Name))
 	}
+	sort.Strings(uids)
 	return uids
 }
 

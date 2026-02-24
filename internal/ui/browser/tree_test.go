@@ -276,9 +276,9 @@ func TestServiceBrowser_GetMethodIcon(t *testing.T) {
 	browser := NewServiceBrowser(services)
 
 	tests := []struct {
-		name           string
-		method         domain.Method
-		expectedType   string // We can't compare resources directly, so we describe what we expect
+		name         string
+		method       domain.Method
+		expectedType string // We can't compare resources directly, so we describe what we expect
 	}{
 		{
 			name: "unary method",
@@ -480,6 +480,52 @@ func TestServiceBrowser_ErrorService(t *testing.T) {
 	// Both are branches
 	assert.True(t, browser.isBranch("example.HealthService"))
 	assert.True(t, browser.isBranch("example.BrokenService"))
+}
+
+func TestServiceBrowser_SortedAlphabetically(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	services := binding.NewUntypedList()
+	// Add services in non-alphabetical order
+	services.Append(domain.Service{
+		Name: "ZebraService", FullName: "example.ZebraService",
+		Methods: []domain.Method{
+			{Name: "Zap", FullName: "example.ZebraService.Zap"},
+			{Name: "Alpha", FullName: "example.ZebraService.Alpha"},
+			{Name: "Middle", FullName: "example.ZebraService.Middle"},
+		},
+	})
+	services.Append(domain.Service{
+		Name: "AlphaService", FullName: "example.AlphaService",
+		Methods: []domain.Method{
+			{Name: "Do", FullName: "example.AlphaService.Do"},
+		},
+	})
+	services.Append(domain.Service{
+		Name: "MiddleService", FullName: "example.MiddleService",
+		Methods: []domain.Method{
+			{Name: "Run", FullName: "example.MiddleService.Run"},
+		},
+	})
+
+	browser := NewServiceBrowser(services)
+
+	// Services should be sorted alphabetically by full name
+	serviceUIDs := browser.getServiceUIDs()
+	assert.Equal(t, []string{
+		"example.AlphaService",
+		"example.MiddleService",
+		"example.ZebraService",
+	}, serviceUIDs)
+
+	// Methods within a service should also be sorted
+	methodUIDs := browser.getMethodUIDs("example.ZebraService")
+	assert.Equal(t, []string{
+		"example.ZebraService:Alpha",
+		"example.ZebraService:Middle",
+		"example.ZebraService:Zap",
+	}, methodUIDs)
 }
 
 func TestServiceBrowser_OnServiceError(t *testing.T) {
