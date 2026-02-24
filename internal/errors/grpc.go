@@ -2,7 +2,9 @@ package errors
 
 import (
 	"fmt"
+	"strings"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -23,6 +25,11 @@ func ClassifyGRPCError(err error) *UIError {
 
 	// Build details string with gRPC code and message
 	details := fmt.Sprintf("gRPC: %s - %s", st.Code(), st.Message())
+
+	// Extract rich error details if present
+	if extra := formatStatusDetails(st); extra != "" {
+		details += "\n\n" + extra
+	}
 
 	switch st.Code() {
 	case codes.Unavailable:
@@ -208,4 +215,100 @@ func ClassifyGRPCError(err error) *UIError {
 			Details:  details,
 		}
 	}
+}
+
+// formatStatusDetails extracts and formats rich error details from a gRPC status.
+func formatStatusDetails(st *status.Status) string {
+	details := st.Details()
+	if len(details) == 0 {
+		return ""
+	}
+
+	var sections []string
+
+	for _, detail := range details {
+		switch d := detail.(type) {
+		case *errdetails.BadRequest:
+			if fvs := d.GetFieldViolations(); len(fvs) > 0 {
+				var lines []string
+				lines = append(lines, "Field Violations:")
+				for _, fv := range fvs {
+					line := fmt.Sprintf("  %s: %s", fv.GetField(), fv.GetDescription())
+					if r := fv.GetReason(); r != "" {
+						line += fmt.Sprintf(" (reason: %s)", r)
+					}
+					lines = append(lines, line)
+				}
+				sections = append(sections, strings.Join(lines, "\n"))
+			}
+
+		case *errdetails.DebugInfo:
+			var lines []string
+			lines = append(lines, "Debug Info:")
+			if d.GetDetail() != "" {
+				lines = append(lines, "  "+d.GetDetail())
+			}
+			for _, entry := range d.GetStackEntries() {
+				lines = append(lines, "  "+entry)
+			}
+			sections = append(sections, strings.Join(lines, "\n"))
+
+		case *errdetails.ErrorInfo:
+			var lines []string
+			lines = append(lines, fmt.Sprintf("Error Info: %s", d.GetReason()))
+			if d.GetDomain() != "" {
+				lines = append(lines, fmt.Sprintf("  Domain: %s", d.GetDomain()))
+			}
+			for k, v := range d.GetMetadata() {
+				lines = append(lines, fmt.Sprintf("  %s: %s", k, v))
+			}
+			sections = append(sections, strings.Join(lines, "\n"))
+
+		case *errdetails.RetryInfo:
+			if delay := d.GetRetryDelay(); delay != nil {
+				sections = append(sections, fmt.Sprintf("Retry after: %v", delay.AsDuration()))
+			}
+
+		case *errdetails.PreconditionFailure:
+			if vs := d.GetViolations(); len(vs) > 0 {
+				var lines []string
+				lines = append(lines, "Precondition Failures:")
+				for _, v := range vs {
+					lines = append(lines, fmt.Sprintf("  [%s] %s: %s", v.GetType(), v.GetSubject(), v.GetDescription()))
+				}
+				sections = append(sections, strings.Join(lines, "\n"))
+			}
+
+		case *errdetails.QuotaFailure:
+			if vs := d.GetViolations(); len(vs) > 0 {
+				var lines []string
+				lines = append(lines, "Quota Failures:")
+				for _, v := range vs {
+					lines = append(lines, fmt.Sprintf("  %s: %s", v.GetSubject(), v.GetDescription()))
+				}
+				sections = append(sections, strings.Join(lines, "\n"))
+			}
+
+		case *errdetails.RequestInfo:
+			sections = append(sections, fmt.Sprintf("Request ID: %s", d.GetRequestId()))
+
+		case *errdetails.ResourceInfo:
+			sections = append(sections, fmt.Sprintf("Resource: %s/%s — %s", d.GetResourceType(), d.GetResourceName(), d.GetDescription()))
+
+		case *errdetails.Help:
+			if links := d.GetLinks(); len(links) > 0 {
+				var lines []string
+				lines = append(lines, "Help:")
+				for _, link := range links {
+					lines = append(lines, fmt.Sprintf("  %s: %s", link.GetDescription(), link.GetUrl()))
+				}
+				sections = append(sections, strings.Join(lines, "\n"))
+			}
+
+		default:
+			sections = append(sections, fmt.Sprintf("Detail: %v", detail))
+		}
+	}
+
+	return strings.Join(sections, "\n\n")
 }
