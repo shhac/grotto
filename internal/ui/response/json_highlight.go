@@ -19,6 +19,8 @@ const (
 	jsonTokenWhitespace
 )
 
+const maxHighlightTokens = 50_000
+
 // jsonToken holds a single lexed JSON token.
 type jsonToken struct {
 	typ   jsonTokenType
@@ -58,7 +60,26 @@ func highlightJSON(input string) []widget.RichTextSegment {
 		})
 	}
 
+	if len(tokens) >= maxHighlightTokens {
+		segments = append(segments, truncationSegment(
+			"\n... (syntax highlighting limited - too many tokens) ...",
+		))
+	}
+
 	return segments
+}
+
+// truncationSegment creates a styled indicator for truncated content.
+func truncationSegment(text string) *widget.TextSegment {
+	return &widget.TextSegment{
+		Style: widget.RichTextStyle{
+			ColorName: theme.ColorNameDisabled,
+			Inline:    true,
+			SizeName:  theme.SizeNameText,
+			TextStyle: fyne.TextStyle{Monospace: true, Italic: true},
+		},
+		Text: text,
+	}
 }
 
 // tokenizeJSON breaks a JSON string into typed tokens.
@@ -67,6 +88,9 @@ func tokenizeJSON(input string) []jsonToken {
 	i := 0
 
 	for i < len(input) {
+		if len(tokens) >= maxHighlightTokens {
+			break
+		}
 		ch := input[i]
 
 		switch {

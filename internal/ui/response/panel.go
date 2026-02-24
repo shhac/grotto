@@ -9,6 +9,8 @@ import (
 	"github.com/shhac/grotto/internal/model"
 )
 
+const maxDisplayBytes = 1_000_000 // 1 MB — cap response display to prevent segment explosion
+
 // ResponsePanel displays response data with reactive binding to state.
 type ResponsePanel struct {
 	widget.BaseWidget
@@ -195,7 +197,16 @@ func (p *ResponsePanel) setupBindings() {
 			p.placeholder.Hide()
 			p.copyBtn.Show()
 			p.selectToggle.Show()
-			p.richText.Segments = highlightJSON(text)
+			displayText := text
+			if len(displayText) > maxDisplayBytes {
+				displayText = displayText[:maxDisplayBytes]
+			}
+			p.richText.Segments = highlightJSON(displayText)
+			if len(text) > maxDisplayBytes {
+				p.richText.Segments = append(p.richText.Segments, truncationSegment(
+					"\n\n... (response too large for display - use copy button for full text) ...",
+				))
+			}
 			p.richText.Refresh()
 			// Keep select entry in sync
 			if p.selectMode {
