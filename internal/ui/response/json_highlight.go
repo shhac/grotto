@@ -38,8 +38,8 @@ var tokenColorName = map[jsonTokenType]fyne.ThemeColorName{
 	jsonTokenWhitespace: theme.ColorNameForeground,
 }
 
-// highlightJSON converts a pretty-printed JSON string into colored RichText segments.
-func highlightJSON(input string) []widget.RichTextSegment {
+// HighlightJSON converts a pretty-printed JSON string into colored RichText segments.
+func HighlightJSON(input string) []widget.RichTextSegment {
 	if input == "" {
 		return nil
 	}

@@ -2,12 +2,15 @@ package bidi
 
 import (
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/shhac/grotto/internal/ui/response"
 )
 
 const (
@@ -21,6 +24,8 @@ const (
 type BidiStreamPanel struct {
 	widget.BaseWidget
 
+	window fyne.Window
+
 	// Send side (left)
 	messageEntry *widget.Entry      // Current message to send
 	sentList     *widget.List       // List of sent messages
@@ -33,6 +38,12 @@ type BidiStreamPanel struct {
 	// Receive side (right)
 	receivedList     *widget.List        // List of received messages
 	receivedMessages binding.UntypedList // Binding for received messages
+	autoScroll       bool
+	autoScrollCheck  *widget.Check
+
+	// Copy buttons
+	copySentBtn     *widget.Button
+	copyReceivedBtn *widget.Button
 
 	// Counters (including evicted messages)
 	totalSent     int
@@ -51,10 +62,12 @@ type BidiStreamPanel struct {
 }
 
 // NewBidiStreamPanel creates a new bidirectional streaming panel.
-func NewBidiStreamPanel() *BidiStreamPanel {
+func NewBidiStreamPanel(window fyne.Window) *BidiStreamPanel {
 	p := &BidiStreamPanel{
+		window:           window,
 		sentMessages:     binding.NewStringList(),
 		receivedMessages: binding.NewUntypedList(),
+		autoScroll:       true,
 	}
 	p.ExtendBaseWidget(p)
 	p.initializeComponents()
@@ -68,43 +81,38 @@ func (p *BidiStreamPanel) initializeComponents() {
 	p.messageEntry.SetPlaceHolder(`{"field": "value"}`)
 	p.messageEntry.Wrapping = fyne.TextWrapWord
 
-	// List of sent messages
+	// List of sent messages (syntax highlighted)
 	p.sentList = widget.NewList(
 		func() int {
 			return p.sentMessages.Length()
 		},
 		func() fyne.CanvasObject {
-			entry := widget.NewMultiLineEntry()
-			entry.Wrapping = fyne.TextWrapWord
-			entry.Disable()
-			return entry
+			rt := widget.NewRichText()
+			rt.Wrapping = fyne.TextWrapBreak
+			return rt
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			entry := obj.(*widget.Entry)
+			rt := obj.(*widget.RichText)
 			msg, _ := p.sentMessages.GetValue(id)
-			entry.SetText(msg)
+			rt.Segments = response.HighlightJSON(msg)
+			rt.Refresh()
 		},
 	)
 
-	// List of received messages
+	// List of received messages (syntax highlighted)
 	p.receivedList = widget.NewListWithData(
 		p.receivedMessages,
 		func() fyne.CanvasObject {
-			// Template: multiline entry for JSON display
-			entry := widget.NewMultiLineEntry()
-			entry.Wrapping = fyne.TextWrapWord
-			entry.Disable() // Read-only
-			return entry
+			rt := widget.NewRichText()
+			rt.Wrapping = fyne.TextWrapBreak
+			return rt
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
-			// Update the entry with the message text.
-			// Use SetText instead of Bind to avoid listener accumulation:
-			// Bind registers a listener on the binding item, and with UntypedList
-			// returning fresh wrappers, old listeners are never cleaned up.
-			entry := obj.(*widget.Entry)
+			rt := obj.(*widget.RichText)
 			if strItem, ok := item.(binding.String); ok {
 				val, _ := strItem.Get()
-				entry.SetText(val)
+				rt.Segments = response.HighlightJSON(val)
+				rt.Refresh()
 			}
 		},
 	)
@@ -124,6 +132,37 @@ func (p *BidiStreamPanel) initializeComponents() {
 	})
 	p.abortBtn.Importance = widget.DangerImportance
 
+	// Copy buttons
+	p.copySentBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		all, _ := p.sentMessages.Get()
+		if len(all) > 0 {
+			p.window.Clipboard().SetContent(strings.Join(all, "\n"))
+		}
+	})
+
+	p.copyReceivedBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		all, err := p.receivedMessages.Get()
+		if err != nil || len(all) == 0 {
+			return
+		}
+		var msgs []string
+		for _, item := range all {
+			if s, ok := item.(string); ok {
+				msgs = append(msgs, s)
+			}
+		}
+		p.window.Clipboard().SetContent(strings.Join(msgs, "\n"))
+	})
+
+	// Auto-scroll toggle
+	p.autoScrollCheck = widget.NewCheck("Auto-scroll", func(checked bool) {
+		p.autoScroll = checked
+		if checked {
+			p.receivedList.ScrollToBottom()
+		}
+	})
+	p.autoScrollCheck.SetChecked(true)
+
 	// Status label
 	p.statusLabel = widget.NewLabel("Ready")
 
@@ -138,7 +177,7 @@ func (p *BidiStreamPanel) buildLayout() {
 	sentCountLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	sentSection := container.NewBorder(
-		sentCountLabel,
+		container.NewBorder(nil, nil, sentCountLabel, p.copySentBtn),
 		nil, nil, nil,
 		p.sentList,
 	)
@@ -174,7 +213,7 @@ func (p *BidiStreamPanel) buildLayout() {
 	receivedLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	rightPanel := container.NewBorder(
-		receivedLabel,
+		container.NewBorder(nil, nil, receivedLabel, container.NewHBox(p.autoScrollCheck, p.copyReceivedBtn)),
 		nil, nil, nil,
 		p.receivedList,
 	)
@@ -311,7 +350,9 @@ func (p *BidiStreamPanel) AddReceived(json string) {
 	p.receivedList.Refresh()
 
 	// Auto-scroll to latest message
-	p.receivedList.ScrollToBottom()
+	if p.autoScroll {
+		p.receivedList.ScrollToBottom()
+	}
 
 	// Update status
 	p.updateStatus()

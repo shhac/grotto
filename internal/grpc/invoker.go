@@ -52,13 +52,14 @@ func NewInvoker(conn *grpc.ClientConn, logger *slog.Logger) *Invoker {
 // Returns:
 //   - jsonResponse: JSON string representation of the response message
 //   - responseHeaders: gRPC metadata (headers) received from the server
+//   - responseTrailers: gRPC metadata (trailers) received from the server
 //   - err: Error if invocation fails or JSON marshaling fails
 func (i *Invoker) InvokeUnary(
 	ctx context.Context,
 	methodDesc protoreflect.MethodDescriptor,
 	jsonRequest string,
 	md metadata.MD,
-) (jsonResponse string, responseHeaders metadata.MD, err error) {
+) (jsonResponse string, responseHeaders metadata.MD, responseTrailers metadata.MD, err error) {
 	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking unary RPC",
 		slog.String("method", methodName),
@@ -74,13 +75,15 @@ func (i *Invoker) InvokeUnary(
 			slog.String("method", methodName),
 			slog.Any("error", err),
 		)
-		return "", nil, fmt.Errorf("invalid request JSON: %w", err)
+		return "", nil, nil, fmt.Errorf("invalid request JSON: %w", err)
 	}
 
-	// Prepare call options to capture response headers
+	// Prepare call options to capture response headers and trailers
 	var respHeaders metadata.MD
+	var respTrailers metadata.MD
 	callOpts := []grpc.CallOption{
 		grpc.Header(&respHeaders),
+		grpc.Trailer(&respTrailers),
 	}
 
 	// Add request metadata if provided
@@ -95,7 +98,7 @@ func (i *Invoker) InvokeUnary(
 			slog.String("method", methodName),
 			slog.Any("error", err),
 		)
-		return "", respHeaders, err
+		return "", respHeaders, respTrailers, err
 	}
 
 	// Marshal response to JSON
@@ -105,7 +108,7 @@ func (i *Invoker) InvokeUnary(
 			slog.String("method", methodName),
 			slog.Any("error", err),
 		)
-		return "", respHeaders, fmt.Errorf("failed to format response: %w", err)
+		return "", respHeaders, respTrailers, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	i.logger.Debug("unary RPC completed",
@@ -113,7 +116,7 @@ func (i *Invoker) InvokeUnary(
 		slog.String("response", truncateForLog(string(jsonBytes))),
 	)
 
-	return string(jsonBytes), respHeaders, nil
+	return string(jsonBytes), respHeaders, respTrailers, nil
 }
 
 // InvokeServerStream calls a server streaming RPC method dynamically.
@@ -126,6 +129,8 @@ func (i *Invoker) InvokeUnary(
 // Returns:
 //   - msgChan: Channel that receives JSON-formatted response messages
 //   - errChan: Channel that receives errors (including io.EOF when stream completes)
+//   - headerChan: Channel that receives response headers (sent once before messages)
+//   - trailerChan: Channel that receives response trailers (sent once after stream ends)
 //
 // The caller should read from both channels until errChan receives io.EOF (normal completion)
 // or a non-EOF error (failure). The channels are closed when the stream ends.
@@ -134,9 +139,11 @@ func (i *Invoker) InvokeServerStream(
 	methodDesc protoreflect.MethodDescriptor,
 	jsonRequest string,
 	md metadata.MD,
-) (<-chan string, <-chan error) {
+) (<-chan string, <-chan error, <-chan metadata.MD, <-chan metadata.MD) {
 	msgChan := make(chan string, 10) // Buffered to avoid blocking on send
 	errChan := make(chan error, 1)
+	headerChan := make(chan metadata.MD, 1)
+	trailerChan := make(chan metadata.MD, 1)
 
 	methodName := string(methodDesc.FullName())
 	i.logger.Debug("invoking server streaming RPC",
@@ -147,6 +154,8 @@ func (i *Invoker) InvokeServerStream(
 	go func() {
 		defer close(msgChan)
 		defer close(errChan)
+		defer close(headerChan)
+		defer close(trailerChan)
 
 		// Create dynamic request message
 		reqMsg := dynamicpb.NewMessage(methodDesc.Input())
@@ -177,6 +186,18 @@ func (i *Invoker) InvokeServerStream(
 			return
 		}
 
+		// Capture response headers (available once stream is established)
+		if hdr, err := stream.Header(); err == nil {
+			headerChan <- hdr
+		}
+
+		// sendTrailersAndError sends trailers before the error so the consumer
+		// can read trailers immediately after receiving the error.
+		sendTrailersAndError := func(streamErr error) {
+			trailerChan <- stream.Trailer()
+			errChan <- streamErr
+		}
+
 		// Receive messages from stream
 		messageCount := 0
 		for {
@@ -186,7 +207,7 @@ func (i *Invoker) InvokeServerStream(
 					slog.String("method", methodName),
 					slog.Int("message_count", messageCount),
 				)
-				errChan <- io.EOF
+				sendTrailersAndError(io.EOF)
 				return
 			}
 			if err != nil {
@@ -195,7 +216,7 @@ func (i *Invoker) InvokeServerStream(
 					slog.Int("message_count", messageCount),
 					slog.Any("error", err),
 				)
-				errChan <- err
+				sendTrailersAndError(err)
 				return
 			}
 
@@ -206,7 +227,7 @@ func (i *Invoker) InvokeServerStream(
 					slog.String("method", methodName),
 					slog.Any("error", err),
 				)
-				errChan <- fmt.Errorf("failed to format stream message: %w", err)
+				sendTrailersAndError(fmt.Errorf("failed to format stream message: %w", err))
 				return
 			}
 
@@ -224,13 +245,13 @@ func (i *Invoker) InvokeServerStream(
 					slog.String("method", methodName),
 					slog.Int("message_count", messageCount),
 				)
-				errChan <- ctx.Err()
+				sendTrailersAndError(ctx.Err())
 				return
 			}
 		}
 	}()
 
-	return msgChan, errChan
+	return msgChan, errChan, headerChan, trailerChan
 }
 
 // ClientStreamHandle represents an active client streaming RPC session.
@@ -239,6 +260,16 @@ type ClientStreamHandle struct {
 	stream     *grpcdynamic.ClientStream
 	methodDesc protoreflect.MethodDescriptor
 	logger     *slog.Logger
+}
+
+// Header returns the response headers from the server.
+func (h *ClientStreamHandle) Header() (metadata.MD, error) {
+	return h.stream.Header()
+}
+
+// Trailer returns the response trailers from the server (available after stream ends).
+func (h *ClientStreamHandle) Trailer() metadata.MD {
+	return h.stream.Trailer()
 }
 
 // Send sends a JSON message on the client stream.
@@ -377,6 +408,16 @@ type BidiStreamHandle struct {
 	stream     *grpcdynamic.BidiStream
 	methodDesc protoreflect.MethodDescriptor
 	logger     *slog.Logger
+}
+
+// Header returns the response headers from the server.
+func (h *BidiStreamHandle) Header() (metadata.MD, error) {
+	return h.stream.Header()
+}
+
+// Trailer returns the response trailers from the server (available after stream ends).
+func (h *BidiStreamHandle) Trailer() metadata.MD {
+	return h.stream.Trailer()
 }
 
 // Send sends a JSON message on the bidirectional stream.

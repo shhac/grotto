@@ -103,7 +103,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services)
 	mw.requestPanel = request.NewRequestPanel(mw.state.Request, mw.logger)
 	mw.responsePanel = response.NewResponsePanel(mw.state.Response, window)
-	mw.bidiPanel = bidi.NewBidiStreamPanel()
+	mw.bidiPanel = bidi.NewBidiStreamPanel(window)
 	mw.statusBar = uierrors.NewStatusBar(connState)
 	mw.workspacePanel = workspace.NewWorkspacePanel(app.Storage(), app.Logger(), window)
 	mw.historyPanel = history.NewHistoryPanel(app.Storage(), app.Logger(), window)
@@ -204,6 +204,20 @@ func formatByteSize(bytes int) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+// convertMetadataToMap converts gRPC metadata.MD to a flat map[string]string.
+func convertMetadataToMap(md metadata.MD) map[string]string {
+	result := make(map[string]string)
+	for key, values := range md {
+		if len(values) > 0 {
+			result[key] = values[0]
+			for i := 1; i < len(values); i++ {
+				result[key] += ", " + values[i]
+			}
+		}
+	}
+	return result
 }
 
 // handleConnect establishes a connection and lists services
@@ -549,7 +563,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 			return
 		}
 
-		respJSON, respHeaders, err := invoker.InvokeUnary(ctx, methodDesc, jsonStr, md)
+		respJSON, respHeaders, respTrailers, err := invoker.InvokeUnary(ctx, methodDesc, jsonStr, md)
 
 		duration := time.Since(startTime)
 		_ = w.state.Response.Loading.Set(false)
@@ -582,27 +596,19 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 			respJSON = buf.String()
 		}
 
-		// Convert metadata.MD to map[string]string for display
-		respMetadataMap := make(map[string]string)
-		for key, values := range respHeaders {
-			if len(values) > 0 {
-				// Join multiple values with comma
-				respMetadataMap[key] = values[0]
-				if len(values) > 1 {
-					for i := 1; i < len(values); i++ {
-						respMetadataMap[key] += ", " + values[i]
-					}
-				}
-			}
-		}
+		// Convert metadata to maps for display
+		respMetadataMap := convertMetadataToMap(respHeaders)
+		respTrailersMap := convertMetadataToMap(respTrailers)
 
 		// Update response (bindings are thread-safe, but widget methods need main thread)
 		_ = w.state.Response.TextData.Set(respJSON)
 		_ = w.state.Response.Duration.Set(fmt.Sprintf("Duration: %v", duration.Round(time.Millisecond)))
 		_ = w.state.Response.Size.Set(formatByteSize(len(respJSON)))
 		_ = w.state.Response.Error.Set("")
+
 		fyne.Do(func() {
 			w.responsePanel.SetResponseMetadata(respMetadataMap)
+			w.responsePanel.SetResponseTrailers(respTrailersMap)
 			w.expandResponsePanel()
 		})
 
@@ -659,7 +665,7 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 	}
 
 	startTime := time.Now()
-	msgChan, errChan := invoker.InvokeServerStream(ctx, methodDesc, jsonStr, md)
+	msgChan, errChan, headerChan, trailerChan := invoker.InvokeServerStream(ctx, methodDesc, jsonStr, md)
 
 	// Process messages in a goroutine
 	go func() {
@@ -695,6 +701,26 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 
 				duration := time.Since(startTime)
 
+				// Read trailers (sent before error by invoker)
+				select {
+				case trailers := <-trailerChan:
+					trailersMap := convertMetadataToMap(trailers)
+					fyne.Do(func() {
+						w.responsePanel.SetResponseTrailers(trailersMap)
+					})
+				default:
+				}
+
+				// Record history for server streaming
+				currentServer, _ := w.state.CurrentServer.Get()
+				streamStatus := "success"
+				streamErr := ""
+				if err != io.EOF {
+					streamStatus = "error"
+					streamErr = err.Error()
+				}
+				go w.recordStreamHistoryEntry(currentServer, serviceName+"/"+methodName, jsonStr, metadataMap, duration, streamStatus, streamErr, "server_stream", messageCount)
+
 				// Check if this is normal stream completion (io.EOF) or an error
 				if err == io.EOF {
 					w.logger.Info("server stream completed successfully",
@@ -721,6 +747,14 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 				}
 
 				return
+
+			case hdr, ok := <-headerChan:
+				if ok {
+					hdrsMap := convertMetadataToMap(hdr)
+					fyne.Do(func() {
+						w.responsePanel.SetResponseMetadata(hdrsMap)
+					})
+				}
 			}
 		}
 	}()
@@ -952,6 +986,9 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		}
 		respJSON, err := csHandle.CloseAndReceive()
 
+		// Capture trailers (available after stream ends)
+		csTrailers := csHandle.Trailer()
+
 		duration := time.Since(startTime)
 		_ = w.state.Response.Loading.Set(false)
 
@@ -964,6 +1001,10 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		if csCancel != nil {
 			csCancel()
 		}
+
+		// Record history
+		currentServer, _ := w.state.CurrentServer.Get()
+		w.recordHistoryEntry(currentServer, serviceName+"/"+methodName, "", metadataMap, respJSON, nil, duration, err)
 
 		if err != nil {
 			w.logger.Error("client stream failed", slog.Any("error", err))
@@ -978,6 +1019,13 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 			return
 		}
 
+		// Capture headers
+		if csHeaders, hdErr := csHandle.Header(); hdErr == nil {
+			fyne.Do(func() {
+				w.responsePanel.SetResponseMetadata(convertMetadataToMap(csHeaders))
+			})
+		}
+
 		// Pretty-print JSON response
 		var buf bytes.Buffer
 		if err := json.Indent(&buf, []byte(respJSON), "", "  "); err == nil {
@@ -990,6 +1038,7 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 		_ = w.state.Response.Size.Set(formatByteSize(len(respJSON)))
 		_ = w.state.Response.Error.Set("")
 		fyne.Do(func() {
+			w.responsePanel.SetResponseTrailers(convertMetadataToMap(csTrailers))
 			w.expandResponsePanel()
 		})
 
@@ -1229,6 +1278,8 @@ func (w *MainWindow) handleBidiStreamSend(jsonStr string, metadataMap map[string
 
 // receiveBidiMessages receives messages from the bidi stream in a background goroutine
 func (w *MainWindow) receiveBidiMessages() {
+	currentServer, _ := w.state.CurrentServer.Get()
+	serviceName, _ := w.state.SelectedService.Get()
 	methodName, _ := w.state.SelectedMethod.Get()
 
 	w.streamMu.Lock()
@@ -1239,7 +1290,10 @@ func (w *MainWindow) receiveBidiMessages() {
 		return
 	}
 
+	startTime := time.Now()
 	messageCount := 0
+	var streamErr error
+
 	for {
 		jsonMsg, err := handle.Recv()
 
@@ -1248,23 +1302,17 @@ func (w *MainWindow) receiveBidiMessages() {
 				slog.String("method", methodName),
 				slog.Int("message_count", messageCount),
 			)
-			fyne.Do(func() {
-				w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages)", messageCount))
-			})
-			return
+			break
 		}
 
 		if err != nil {
+			streamErr = err
 			w.logger.Error("bidi stream receive error",
 				slog.String("method", methodName),
 				slog.Int("message_count", messageCount),
 				slog.Any("error", err),
 			)
-			fyne.Do(func() {
-				w.bidiPanel.SetStatus(fmt.Sprintf("Receive error: %s", err.Error()))
-				w.bidiPanel.DisableSendControls()
-			})
-			return
+			break
 		}
 
 		messageCount++
@@ -1285,6 +1333,39 @@ func (w *MainWindow) receiveBidiMessages() {
 			slog.Int("message_num", messageCount),
 		)
 	}
+
+	duration := time.Since(startTime)
+
+	// Capture trailers and headers
+	trailers := handle.Trailer()
+	headers, _ := handle.Header()
+
+	// Update UI with final status, headers, and trailers
+	fyne.Do(func() {
+		if streamErr != nil {
+			w.bidiPanel.SetStatus(fmt.Sprintf("Receive error: %s", streamErr.Error()))
+			w.bidiPanel.DisableSendControls()
+		} else {
+			w.bidiPanel.SetStatus(fmt.Sprintf("Receive complete (%d messages)", messageCount))
+		}
+
+		// Display headers and trailers on the response panel
+		if headers != nil {
+			w.responsePanel.SetResponseMetadata(convertMetadataToMap(headers))
+		}
+		if trailers != nil {
+			w.responsePanel.SetResponseTrailers(convertMetadataToMap(trailers))
+		}
+	})
+
+	// Record history
+	status := "OK"
+	errorMsg := ""
+	if streamErr != nil {
+		status = "ERROR"
+		errorMsg = streamErr.Error()
+	}
+	w.recordStreamHistoryEntry(currentServer, serviceName+"/"+methodName, "", nil, duration, status, errorMsg, "bidi_stream", messageCount)
 }
 
 // handleBidiStreamClose closes the send side of the bidi stream
@@ -1371,6 +1452,38 @@ func (w *MainWindow) recordHistoryEntry(address, method, requestJSON string, req
 			w.logger.Error("failed to save history entry", slog.Any("error", err))
 		}
 	}()
+}
+
+// recordStreamHistoryEntry saves a streaming RPC summary to history.
+func (w *MainWindow) recordStreamHistoryEntry(address, method, requestJSON string, requestMetadata map[string]string, duration time.Duration, status, errorMsg, streamType string, messageCount int) {
+	currentConn := domain.Connection{
+		Address: address,
+	}
+	if w.connectionBar != nil {
+		currentConn.TLS = w.connectionBar.GetTLSSettings()
+		currentConn.UseTLS = currentConn.TLS.Enabled
+	}
+
+	entry := domain.HistoryEntry{
+		ID:           history.GenerateEntryID(),
+		Timestamp:    time.Now(),
+		Connection:   currentConn,
+		Method:       method,
+		Request:      requestJSON,
+		Response:     fmt.Sprintf("(%d messages)", messageCount),
+		Duration:     duration,
+		Status:       status,
+		Error:        errorMsg,
+		StreamType:   streamType,
+		MessageCount: messageCount,
+		Metadata: domain.Metadata{
+			Request: requestMetadata,
+		},
+	}
+
+	if err := w.historyPanel.AddEntry(entry); err != nil {
+		w.logger.Error("failed to save stream history entry", slog.Any("error", err))
+	}
 }
 
 // handleHistoryLoad loads a history entry into the UI without sending.

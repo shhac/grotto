@@ -212,7 +212,7 @@ func TestInvokeUnary(t *testing.T) {
 	require.NoError(t, err)
 
 	req := `{"item":{"id":"test-1","name":"hello","color":"RED","tags":["a","b"]}}`
-	resp, _, err := inv.InvokeUnary(context.Background(), md, req, nil)
+	resp, _, _, err := inv.InvokeUnary(context.Background(), md, req, nil)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -234,7 +234,7 @@ func TestInvokeUnary_EmptyRequest(t *testing.T) {
 	md, err := rc.GetMethodDescriptor("grpctest.TestService", "UnaryEcho")
 	require.NoError(t, err)
 
-	resp, _, err := inv.InvokeUnary(context.Background(), md, `{}`, nil)
+	resp, _, _, err := inv.InvokeUnary(context.Background(), md, `{}`, nil)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -250,7 +250,7 @@ func TestInvokeUnary_InvalidJSON(t *testing.T) {
 	md, err := rc.GetMethodDescriptor("grpctest.TestService", "UnaryEcho")
 	require.NoError(t, err)
 
-	_, _, err = inv.InvokeUnary(context.Background(), md, `{invalid`, nil)
+	_, _, _, err = inv.InvokeUnary(context.Background(), md, `{invalid`, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid request JSON")
 }
@@ -264,7 +264,7 @@ func TestInvokeServerStream(t *testing.T) {
 	require.NoError(t, err)
 
 	req := `{"item":{"id":"stream-1","name":"streamed"}}`
-	msgChan, errChan := inv.InvokeServerStream(context.Background(), md, req, nil)
+	msgChan, errChan, _, _ := inv.InvokeServerStream(context.Background(), md, req, nil)
 
 	var messages []string
 	for msg := range msgChan {
@@ -299,7 +299,7 @@ func TestInvokeServerStream_Cancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately.
 
-	_, errChan := inv.InvokeServerStream(ctx, md, `{"item":{"id":"cancel"}}`, nil)
+	_, errChan, _, _ := inv.InvokeServerStream(ctx, md, `{"item":{"id":"cancel"}}`, nil)
 
 	streamErr := <-errChan
 	require.Error(t, streamErr)
@@ -438,7 +438,7 @@ func invokeUnaryJSON(t *testing.T, reqJSON string) map[string]interface{} {
 	md, err := rc.GetMethodDescriptor("grpctest.TestService", "UnaryEcho")
 	require.NoError(t, err)
 
-	resp, _, err := inv.InvokeUnary(context.Background(), md, reqJSON, nil)
+	resp, _, _, err := inv.InvokeUnary(context.Background(), md, reqJSON, nil)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -592,7 +592,7 @@ func TestInvokeUnary_WithMetadata(t *testing.T) {
 		"x-custom-header": "test-value",
 	})
 
-	resp, _, err := inv.InvokeUnary(context.Background(), methodDesc, `{"item":{"id":"meta"}}`, md)
+	resp, _, _, err := inv.InvokeUnary(context.Background(), methodDesc, `{"item":{"id":"meta"}}`, md)
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp)
 }

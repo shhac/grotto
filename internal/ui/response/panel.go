@@ -36,6 +36,9 @@ type ResponsePanel struct {
 	metadataKeys binding.StringList
 	metadataVals binding.StringList
 	metadataList *widget.List
+	trailerKeys  binding.StringList
+	trailerVals  binding.StringList
+	trailerList  *widget.List
 	responseTabs *container.AppTabs
 
 	// Streaming widget
@@ -56,6 +59,8 @@ func NewResponsePanel(state *model.ResponseState, window fyne.Window) *ResponseP
 		state:        state,
 		metadataKeys: binding.NewStringList(),
 		metadataVals: binding.NewStringList(),
+		trailerKeys:  binding.NewStringList(),
+		trailerVals:  binding.NewStringList(),
 	}
 	p.ExtendBaseWidget(p)
 	p.initializeComponents()
@@ -135,6 +140,29 @@ func (p *ResponsePanel) initializeComponents() {
 		},
 	)
 
+	// Trailer list (same layout as metadata list)
+	p.trailerList = widget.NewList(
+		func() int {
+			return p.trailerKeys.Length()
+		},
+		func() fyne.CanvasObject {
+			return container.NewHBox(
+				widget.NewLabel(""),
+				widget.NewLabel(" = "),
+				widget.NewLabel(""),
+			)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			hbox := obj.(*fyne.Container)
+			keyLabel := hbox.Objects[0].(*widget.Label)
+			valLabel := hbox.Objects[2].(*widget.Label)
+			key, _ := p.trailerKeys.GetValue(id)
+			val, _ := p.trailerVals.GetValue(id)
+			keyLabel.SetText(key)
+			valLabel.SetText(val)
+		},
+	)
+
 	// Streaming widget
 	p.streamingWidget = NewStreamingMessagesWidget(p.window)
 
@@ -151,13 +179,22 @@ func (p *ResponsePanel) initializeComponents() {
 		p.displayStack,
 	)
 
-	// Headers tab: metadata list
-	headersTabContent := container.NewMax(p.metadataList)
+	// Metadata tab: headers and trailers
+	headersLabel := widget.NewLabel("Response Headers")
+	headersLabel.TextStyle = fyne.TextStyle{Bold: true}
+	trailersLabel := widget.NewLabel("Response Trailers")
+	trailersLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	metadataTabContent := container.NewVSplit(
+		container.NewBorder(headersLabel, nil, nil, nil, p.metadataList),
+		container.NewBorder(trailersLabel, nil, nil, nil, p.trailerList),
+	)
+	metadataTabContent.SetOffset(0.5)
 
 	// Create tabbed interface
 	p.responseTabs = container.NewAppTabs(
 		container.NewTabItem("Response", responseTabContent),
-		container.NewTabItem("Headers", headersTabContent),
+		container.NewTabItem("Metadata", metadataTabContent),
 	)
 
 	// Create content containers (wrap tabs in a container)
@@ -203,7 +240,7 @@ func (p *ResponsePanel) setupBindings() {
 			if len(displayText) > maxDisplayBytes {
 				displayText = displayText[:maxDisplayBytes]
 			}
-			p.richText.Segments = highlightJSON(displayText)
+			p.richText.Segments = HighlightJSON(displayText)
 			if len(text) > maxDisplayBytes {
 				p.richText.Segments = append(p.richText.Segments, truncationSegment(
 					"\n\n... (response too large for display - use copy button for full text) ...",
@@ -333,6 +370,19 @@ func (p *ResponsePanel) SetResponseMetadata(md map[string]string) {
 	// The tab will show the headers when the user clicks on it
 }
 
+// SetResponseTrailers displays response trailers received from the server.
+func (p *ResponsePanel) SetResponseTrailers(md map[string]string) {
+	_ = p.trailerKeys.Set([]string{})
+	_ = p.trailerVals.Set([]string{})
+
+	for key, val := range md {
+		_ = p.trailerKeys.Append(key)
+		_ = p.trailerVals.Append(val)
+	}
+
+	p.trailerList.Refresh()
+}
+
 // ClearResponse clears all response data (for keyboard shortcut)
 func (p *ResponsePanel) ClearResponse() {
 	_ = p.state.TextData.Set("")
@@ -347,11 +397,14 @@ func (p *ResponsePanel) ClearResponse() {
 	}
 }
 
-// ClearResponseMetadata clears all response headers.
+// ClearResponseMetadata clears all response headers and trailers.
 func (p *ResponsePanel) ClearResponseMetadata() {
 	_ = p.metadataKeys.Set([]string{})
 	_ = p.metadataVals.Set([]string{})
 	p.metadataList.Refresh()
+	_ = p.trailerKeys.Set([]string{})
+	_ = p.trailerVals.Set([]string{})
+	p.trailerList.Refresh()
 }
 
 // CreateRenderer implements fyne.Widget.

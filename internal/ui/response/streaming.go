@@ -27,10 +27,11 @@ type StreamingMessagesWidget struct {
 	totalReceived int // total messages received (including evicted)
 
 	// Status section
-	statusLabel *widget.Label
-	stopBtn     *widget.Button
-	copyAllBtn  *widget.Button
-	statusBox   *fyne.Container
+	statusLabel     *widget.Label
+	stopBtn         *widget.Button
+	copyAllBtn      *widget.Button
+	autoScrollCheck *widget.Check
+	statusBox       *fyne.Container
 
 	// Main container
 	container *fyne.Container
@@ -80,34 +81,38 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 		w.window.Clipboard().SetContent(strings.Join(msgs, "\n"))
 	})
 
-	// Status box (label + stop button + copy button)
+	// Auto-scroll toggle
+	w.autoScrollCheck = widget.NewCheck("Auto-scroll", func(checked bool) {
+		w.autoScroll = checked
+		if checked {
+			w.messageList.ScrollToBottom()
+		}
+	})
+	w.autoScrollCheck.SetChecked(true)
+
+	// Status box (label + controls)
 	w.statusBox = container.NewBorder(
 		nil,
 		nil,
 		nil,
-		container.NewHBox(w.copyAllBtn, w.stopBtn),
+		container.NewHBox(w.autoScrollCheck, w.copyAllBtn, w.stopBtn),
 		w.statusLabel,
 	)
 
-	// Message list
+	// Message list with syntax-highlighted JSON
 	w.messageList = widget.NewListWithData(
 		w.messages,
 		func() fyne.CanvasObject {
-			// Template: multiline entry for JSON display
-			entry := widget.NewMultiLineEntry()
-			entry.Wrapping = fyne.TextWrapWord
-			entry.Disable() // Read-only
-			return entry
+			rt := widget.NewRichText()
+			rt.Wrapping = fyne.TextWrapBreak
+			return rt
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
-			// Update the entry with the message text.
-			// Use SetText instead of Bind to avoid listener accumulation:
-			// Bind registers a listener on the binding item, and with UntypedList
-			// returning fresh wrappers, old listeners are never cleaned up.
-			entry := obj.(*widget.Entry)
+			rt := obj.(*widget.RichText)
 			if strItem, ok := item.(binding.String); ok {
 				val, _ := strItem.Get()
-				entry.SetText(val)
+				rt.Segments = HighlightJSON(val)
+				rt.Refresh()
 			}
 		},
 	)
