@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/storage"
@@ -20,6 +21,7 @@ type HistoryPanel struct {
 
 	storage storage.Repository
 	logger  *slog.Logger
+	window  fyne.Window
 
 	// UI components
 	historyList binding.UntypedList
@@ -36,10 +38,11 @@ type HistoryPanel struct {
 }
 
 // NewHistoryPanel creates a new history panel
-func NewHistoryPanel(storage storage.Repository, logger *slog.Logger) *HistoryPanel {
+func NewHistoryPanel(storage storage.Repository, logger *slog.Logger, window fyne.Window) *HistoryPanel {
 	p := &HistoryPanel{
 		storage:     storage,
 		logger:      logger,
+		window:      window,
 		historyList: binding.NewUntypedList(),
 	}
 
@@ -216,15 +219,23 @@ func (p *HistoryPanel) SetOnReplay(fn func(entry domain.HistoryEntry)) {
 	p.onReplay = fn
 }
 
-// handleClearAll clears all history
+// handleClearAll clears all history after user confirmation
 func (p *HistoryPanel) handleClearAll() {
-	if err := p.storage.ClearHistory(); err != nil {
-		p.logger.Error("failed to clear history", slog.Any("error", err))
-		return
-	}
-
-	p.Refresh()
-	p.logger.Info("history cleared")
+	dialog.ShowConfirm("Clear History",
+		"Are you sure you want to clear all history entries?",
+		func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+			if err := p.storage.ClearHistory(); err != nil {
+				p.logger.Error("failed to clear history", slog.Any("error", err))
+				return
+			}
+			p.Refresh()
+			p.logger.Info("history cleared")
+		},
+		p.window,
+	)
 }
 
 // formatMethodName extracts and formats the method name for display

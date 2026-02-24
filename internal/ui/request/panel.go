@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/model"
 	"github.com/shhac/grotto/internal/ui/components"
@@ -126,23 +127,29 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 		}
 	}))
 
-	// Metadata list showing key-value pairs
+	// Metadata list showing key-value pairs with delete buttons
 	p.metadataList = widget.NewList(
 		func() int {
 			return p.metadataKeys.Length()
 		},
 		func() fyne.CanvasObject {
-			// Template row: two labels for key and value
-			return container.NewHBox(
-				widget.NewLabel(""),
-				widget.NewLabel("="),
-				widget.NewLabel(""),
+			// Template row: key label, equals, value label, delete button
+			return container.NewBorder(
+				nil, nil, nil,
+				widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
+				container.NewHBox(
+					widget.NewLabel(""),
+					widget.NewLabel("="),
+					widget.NewLabel(""),
+				),
 			)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			box := obj.(*fyne.Container)
-			keyLabel := box.Objects[0].(*widget.Label)
-			valLabel := box.Objects[2].(*widget.Label)
+			border := obj.(*fyne.Container)
+			deleteBtn := border.Objects[1].(*widget.Button)
+			hbox := border.Objects[0].(*fyne.Container)
+			keyLabel := hbox.Objects[0].(*widget.Label)
+			valLabel := hbox.Objects[2].(*widget.Label)
 
 			// Get key and value from bindings
 			key, _ := p.metadataKeys.GetValue(id)
@@ -150,6 +157,11 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 
 			keyLabel.SetText(key)
 			valLabel.SetText(val)
+
+			// Wire delete button
+			deleteBtn.OnTapped = func() {
+				p.deleteMetadata(id)
+			}
 		},
 	)
 
@@ -322,6 +334,24 @@ func (p *RequestPanel) addMetadata() {
 	// Clear entry fields
 	p.keyEntry.SetText("")
 	p.valEntry.SetText("")
+
+	p.metadataList.Refresh()
+}
+
+// deleteMetadata removes a metadata entry by index.
+func (p *RequestPanel) deleteMetadata(index int) {
+	keys, _ := p.metadataKeys.Get()
+	vals, _ := p.metadataVals.Get()
+
+	if index < 0 || index >= len(keys) {
+		return
+	}
+
+	newKeys := append(keys[:index], keys[index+1:]...)
+	newVals := append(vals[:index], vals[index+1:]...)
+
+	_ = p.metadataKeys.Set(newKeys)
+	_ = p.metadataVals.Set(newVals)
 
 	p.metadataList.Refresh()
 }
