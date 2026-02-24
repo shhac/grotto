@@ -84,6 +84,7 @@ type MainWindow struct {
 	bidiCancelFunc     context.CancelFunc
 	serverStreamCancel context.CancelFunc
 	unaryCancel        context.CancelFunc
+	connectCancel      context.CancelFunc
 
 	// Layout state
 	inBidiMode   bool             // avoid unnecessary rebuilds
@@ -229,14 +230,12 @@ func (w *MainWindow) wireCallbacks() {
 		w.applyWorkspaceState(workspace)
 	})
 
-	// History: click to load (without sending)
+	// History: click to load (without sending), or replay (connect + load + send)
 	w.historyPanel.SetOnSelect(func(entry domain.HistoryEntry) {
-		w.handleHistoryLoad(entry)
+		w.handleHistoryEntry(entry, false)
 	})
-
-	// History: replay (connect + load + send)
 	w.historyPanel.SetOnReplay(func(entry domain.HistoryEntry) {
-		w.handleHistoryReplay(entry)
+		w.handleHistoryEntry(entry, true)
 	})
 }
 
@@ -256,6 +255,16 @@ func formatByteSize(bytes int) string {
 	}
 }
 
+// prettyJSON returns the pretty-printed form of a JSON string, or the
+// original string if it cannot be indented.
+func prettyJSON(s string) string {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(s), "", "  "); err == nil {
+		return buf.String()
+	}
+	return s
+}
+
 // convertMetadataToMap converts gRPC metadata.MD to a flat map[string]string.
 func convertMetadataToMap(md metadata.MD) map[string]string {
 	result := make(map[string]string)
@@ -273,7 +282,11 @@ func convertMetadataToMap(md metadata.MD) map[string]string {
 // handleConnect establishes a connection and lists services
 func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSettings) {
 	go func() {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), w.getRequestTimeout())
+		defer cancel()
+		w.streamMu.Lock()
+		w.connectCancel = cancel
+		w.streamMu.Unlock()
 
 		// Update UI state (bindings are thread-safe)
 		_ = w.connState.State.Set("connecting")
@@ -286,50 +299,20 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 		}
 
 		if err := w.app.ConnManager().Connect(ctx, cfg); err != nil {
-			w.logger.Error("connection failed", slog.Any("error", err))
-			_ = w.connState.State.Set("error")
-			_ = w.connState.Message.Set("Failed to connect: " + err.Error())
-
-			// Show rich gRPC error dialog with retry option (must be on main thread)
-			fyne.Do(func() {
-				uierrors.ShowGRPCError(err, w.window, func() {
-					// Retry callback - attempt connection again
-					w.handleConnect(address, tlsSettings)
-				})
-			})
+			w.failConnect(address, tlsSettings, "Failed to connect", err)
 			return
 		}
 
 		// Initialize reflection client
 		if err := w.app.InitializeReflectionClient(); err != nil {
-			w.logger.Error("failed to initialize reflection", slog.Any("error", err))
-			_ = w.connState.State.Set("error")
-			_ = w.connState.Message.Set("Failed to initialize reflection: " + err.Error())
-
-			// Show rich gRPC error dialog with retry option (must be on main thread)
-			fyne.Do(func() {
-				uierrors.ShowGRPCError(err, w.window, func() {
-					// Retry callback - attempt connection again
-					w.handleConnect(address, tlsSettings)
-				})
-			})
+			w.failConnect(address, tlsSettings, "Failed to initialize reflection", err)
 			return
 		}
 
 		// List services
 		services, err := w.app.ReflectionClient().ListServices(ctx)
 		if err != nil {
-			w.logger.Error("failed to list services", slog.Any("error", err))
-			_ = w.connState.State.Set("error")
-			_ = w.connState.Message.Set("Failed to list services: " + err.Error())
-
-			// Show rich gRPC error dialog with retry option (must be on main thread)
-			fyne.Do(func() {
-				uierrors.ShowGRPCError(err, w.window, func() {
-					// Retry callback - attempt connection again
-					w.handleConnect(address, tlsSettings)
-				})
-			})
+			w.failConnect(address, tlsSettings, "Failed to list services", err)
 			return
 		}
 
@@ -375,10 +358,25 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 	}()
 }
 
+// failConnect handles a connection-phase error by logging, updating UI state,
+// and showing a gRPC error dialog with a retry option.
+func (w *MainWindow) failConnect(address string, tls domain.TLSSettings, msg string, err error) {
+	w.logger.Error(msg, slog.Any("error", err))
+	_ = w.connState.State.Set("error")
+	_ = w.connState.Message.Set(msg + ": " + err.Error())
+	fyne.Do(func() {
+		uierrors.ShowGRPCError(err, w.window, func() {
+			w.handleConnect(address, tls)
+		})
+	})
+}
+
 // cancelAllStreams cancels all active stream operations and clears their handles.
 // Cancel funcs are called outside the lock to avoid potential deadlocks.
 func (w *MainWindow) cancelAllStreams() {
 	w.streamMu.Lock()
+	connCancel := w.connectCancel
+	w.connectCancel = nil
 	unaryCancel := w.unaryCancel
 	w.unaryCancel = nil
 	serverCancel := w.serverStreamCancel
@@ -393,6 +391,9 @@ func (w *MainWindow) cancelAllStreams() {
 	w.streamMu.Unlock()
 
 	// Call cancel funcs outside the lock
+	if connCancel != nil {
+		connCancel()
+	}
 	if unaryCancel != nil {
 		unaryCancel()
 	}
@@ -657,11 +658,7 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 			return
 		}
 
-		// Pretty-print JSON response
-		var buf bytes.Buffer
-		if err := json.Indent(&buf, []byte(respJSON), "", "  "); err == nil {
-			respJSON = buf.String()
-		}
+		respJSON = prettyJSON(respJSON)
 
 		// Convert metadata to maps for display
 		respMetadataMap := convertMetadataToMap(respHeaders)
@@ -757,12 +754,7 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 				}
 
 				messageCount++
-
-				// Pretty-print JSON message
-				var buf bytes.Buffer
-				if err := json.Indent(&buf, []byte(jsonMsg), "", "  "); err == nil {
-					jsonMsg = buf.String()
-				}
+				jsonMsg = prettyJSON(jsonMsg)
 
 				// Add message to UI (must be on main thread)
 				fyne.Do(func() {
@@ -1111,11 +1103,7 @@ func (w *MainWindow) handleClientStreamFinish(metadataMap map[string]string) {
 			})
 		}
 
-		// Pretty-print JSON response
-		var buf bytes.Buffer
-		if err := json.Indent(&buf, []byte(respJSON), "", "  "); err == nil {
-			respJSON = buf.String()
-		}
+		respJSON = prettyJSON(respJSON)
 
 		// Update response
 		_ = w.state.Response.TextData.Set(respJSON)
@@ -1234,37 +1222,7 @@ func (w *MainWindow) applyWorkspaceState(workspace domain.Workspace) {
 		} else {
 			// Need to connect first
 			w.handleConnect(conn.Address, conn.TLS)
-
-			// Wait for connection then restore state
-			go func() {
-				done := make(chan struct{})
-				var listener binding.DataListener
-				listener = binding.NewDataListener(func() {
-					state, _ := w.connState.State.Get()
-					switch state {
-					case "connected":
-						w.connState.State.RemoveListener(listener)
-						close(done)
-					case "error":
-						w.connState.State.RemoveListener(listener)
-						close(done)
-					}
-				})
-				w.connState.State.AddListener(listener)
-
-				select {
-				case <-done:
-					state, _ := w.connState.State.Get()
-					if state == "connected" {
-						afterConnect()
-					} else {
-						w.logger.Error("connection failed while loading workspace")
-					}
-				case <-time.After(30 * time.Second):
-					w.connState.State.RemoveListener(listener)
-					w.logger.Error("timed out waiting for connection while loading workspace")
-				}
-			}()
+			w.waitForConnection(afterConnect, "while loading workspace")
 		}
 	} else {
 		// No connection to restore, just set any request state
@@ -1462,12 +1420,7 @@ func (w *MainWindow) receiveBidiMessages() {
 		}
 
 		messageCount++
-
-		// Pretty-print JSON message
-		var buf bytes.Buffer
-		if err := json.Indent(&buf, []byte(jsonMsg), "", "  "); err == nil {
-			jsonMsg = buf.String()
-		}
+		jsonMsg = prettyJSON(jsonMsg)
 
 		// Add message to UI (must be on main thread)
 		fyne.Do(func() {
@@ -1557,17 +1510,7 @@ func (w *MainWindow) recordHistoryEntry(address, method, requestJSON string, req
 	}
 
 	// Convert response metadata to map
-	respMeta := make(map[string]string)
-	for key, values := range responseMetadata {
-		if len(values) > 0 {
-			respMeta[key] = values[0]
-			if len(values) > 1 {
-				for i := 1; i < len(values); i++ {
-					respMeta[key] += ", " + values[i]
-				}
-			}
-		}
-	}
+	respMeta := convertMetadataToMap(responseMetadata)
 
 	// Determine status
 	status := "success"
@@ -1633,10 +1576,14 @@ func (w *MainWindow) recordStreamHistoryEntry(address, method, requestJSON strin
 	}
 }
 
-// handleHistoryLoad loads a history entry into the UI without sending.
-// It sets the connection, selects the method, and fills request data.
-func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
-	w.logger.Info("loading history entry",
+// handleHistoryEntry loads a history entry into the UI. When replay is true
+// the request is automatically sent after loading.
+func (w *MainWindow) handleHistoryEntry(entry domain.HistoryEntry, replay bool) {
+	action := "loading"
+	if replay {
+		action = "replaying"
+	}
+	w.logger.Info(action+" history entry",
 		slog.String("id", entry.ID),
 		slog.String("method", entry.Method),
 	)
@@ -1655,29 +1602,21 @@ func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
 	serviceName := parts[0]
 	methodName := parts[1]
 
-	// afterConnect is called once we know the server is connected and services
-	// are loaded. It selects the method, fills request data, and optionally sends.
-	afterConnect := func(andSend bool) {
+	// afterConnect is called once the server is connected and services are loaded.
+	// It selects the method, fills request data, and optionally triggers send.
+	afterConnect := func() {
 		fyne.Do(func() {
-			// Select the method in the service browser — this triggers
-			// handleMethodSelect which rebuilds the request form and proto descriptors.
 			w.serviceBrowser.SelectMethod(serviceName, methodName)
 		})
 
-		// Set request body in a separate fyne.Do to ensure it runs AFTER
-		// SelectMethod's OnSelected callback (which clears TextData via SetMethod).
 		fyne.Do(func() {
 			_ = w.state.Request.TextData.Set(entry.Request)
-
-			// Set metadata on the request panel's internal bindings
 			w.requestPanel.SetMetadata(entry.Metadata.Request)
-
-			// Populate form from the loaded JSON text
 			w.requestPanel.SyncTextToForm()
 
 			w.logger.Info("history entry loaded into request panel")
 
-			if andSend {
+			if replay {
 				w.requestPanel.TriggerSend()
 			}
 		})
@@ -1692,119 +1631,40 @@ func (w *MainWindow) handleHistoryLoad(entry domain.HistoryEntry) {
 		w.connectionBar.SetAddress(entry.Connection.Address)
 		w.connectionBar.SetTLSSettings(entry.Connection.TLS)
 		w.handleConnect(entry.Connection.Address, entry.Connection.TLS)
-
-		// Wait for connection to complete by listening for state changes
-		go func() {
-			done := make(chan struct{})
-			var listener binding.DataListener
-			listener = binding.NewDataListener(func() {
-				state, _ := w.connState.State.Get()
-				switch state {
-				case "connected":
-					w.connState.State.RemoveListener(listener)
-					close(done)
-				case "error":
-					w.connState.State.RemoveListener(listener)
-					close(done)
-				}
-			})
-			w.connState.State.AddListener(listener)
-
-			// Timeout after 30 seconds
-			select {
-			case <-done:
-				state, _ := w.connState.State.Get()
-				if state == "connected" {
-					afterConnect(false)
-				} else {
-					w.logger.Error("connection failed while loading history entry")
-				}
-			case <-time.After(30 * time.Second):
-				w.connState.State.RemoveListener(listener)
-				w.logger.Error("timed out waiting for connection while loading history entry")
-			}
-		}()
-	} else {
-		afterConnect(false)
-	}
-}
-
-// handleHistoryReplay replays a request from history: connects, loads, and sends.
-func (w *MainWindow) handleHistoryReplay(entry domain.HistoryEntry) {
-	w.logger.Info("replaying history entry",
-		slog.String("id", entry.ID),
-		slog.String("method", entry.Method),
-	)
-
-	// Parse the method to extract service and method names
-	parts := strings.Split(entry.Method, "/")
-	if len(parts) != 2 {
-		w.logger.Error("invalid method format in history entry", slog.String("method", entry.Method))
-		fyne.Do(func() {
-			dialog.ShowError(fmt.Errorf("invalid method format: %s", entry.Method), w.window)
-		})
-		return
-	}
-
-	serviceName := parts[0]
-	methodName := parts[1]
-
-	// afterConnect selects the method, fills request data, and triggers send.
-	afterConnect := func() {
-		fyne.Do(func() {
-			w.serviceBrowser.SelectMethod(serviceName, methodName)
-			_ = w.state.Request.TextData.Set(entry.Request)
-			w.requestPanel.SetMetadata(entry.Metadata.Request)
-			w.requestPanel.SyncTextToForm()
-
-			w.logger.Info("history entry loaded - triggering send")
-			w.requestPanel.TriggerSend()
-		})
-	}
-
-	// Check if we need to connect to a different server
-	currentServer, _ := w.state.CurrentServer.Get()
-	needsConnect := currentServer != entry.Connection.Address
-
-	if needsConnect {
-		w.logger.Info("connecting to historical server", slog.String("address", entry.Connection.Address))
-		w.connectionBar.SetAddress(entry.Connection.Address)
-		w.connectionBar.SetTLSSettings(entry.Connection.TLS)
-		w.handleConnect(entry.Connection.Address, entry.Connection.TLS)
-
-		// Wait for connection to complete by listening for state changes
-		go func() {
-			done := make(chan struct{})
-			var listener binding.DataListener
-			listener = binding.NewDataListener(func() {
-				state, _ := w.connState.State.Get()
-				switch state {
-				case "connected":
-					w.connState.State.RemoveListener(listener)
-					close(done)
-				case "error":
-					w.connState.State.RemoveListener(listener)
-					close(done)
-				}
-			})
-			w.connState.State.AddListener(listener)
-
-			select {
-			case <-done:
-				state, _ := w.connState.State.Get()
-				if state == "connected" {
-					afterConnect()
-				} else {
-					w.logger.Error("connection failed while replaying history entry")
-				}
-			case <-time.After(30 * time.Second):
-				w.connState.State.RemoveListener(listener)
-				w.logger.Error("timed out waiting for connection while replaying history entry")
-			}
-		}()
+		w.waitForConnection(afterConnect, "while "+action+" history entry")
 	} else {
 		afterConnect()
 	}
+}
+
+// waitForConnection listens for connection state to settle ("connected" or "error")
+// and calls onSuccess if the connection succeeds. errContext is appended to log messages.
+func (w *MainWindow) waitForConnection(onSuccess func(), errContext string) {
+	go func() {
+		done := make(chan struct{})
+		var listener binding.DataListener
+		listener = binding.NewDataListener(func() {
+			state, _ := w.connState.State.Get()
+			switch state {
+			case "connected", "error":
+				w.connState.State.RemoveListener(listener)
+				close(done)
+			}
+		})
+		w.connState.State.AddListener(listener)
+		select {
+		case <-done:
+			state, _ := w.connState.State.Get()
+			if state == "connected" {
+				onSuccess()
+			} else {
+				w.logger.Error("connection failed " + errContext)
+			}
+		case <-time.After(30 * time.Second):
+			w.connState.State.RemoveListener(listener)
+			w.logger.Error("timed out waiting for connection " + errContext)
+		}
+	}()
 }
 
 // toggleConnection toggles between connected and disconnected states.
