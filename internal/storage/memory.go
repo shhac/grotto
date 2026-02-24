@@ -165,3 +165,17 @@ func (m *MemoryRepository) ClearHistory() error {
 	m.history = []domain.HistoryEntry{}
 	return nil
 }
+
+// DeleteHistoryEntry removes a single history entry by ID
+func (m *MemoryRepository) DeleteHistoryEntry(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i, entry := range m.history {
+		if entry.ID == id {
+			m.history = append(m.history[:i], m.history[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("history entry %q not found", id)
+}
