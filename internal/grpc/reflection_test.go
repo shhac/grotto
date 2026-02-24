@@ -1443,6 +1443,6 @@ func TestIntegration_NonCanonicalServer(t *testing.T) {
 	}
 }
 
-func boolPtr(b bool) *bool { return &b }
+func boolPtr(b bool) *bool    { return &b }
 func strPtr(s string) *string { return &s }
 func int32Ptr(i int32) *int32 { return &i }

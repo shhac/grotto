@@ -22,18 +22,18 @@ import (
 //  4. Infinite loop causes UI freeze
 //
 // Solution:
-//  - Atomic 'syncing' flag guards ALL sync operations (lock-free to avoid deadlocks)
-//  - SwitchMode is the ONLY entry point for mode changes
-//  - Sync functions are ONLY called from within SwitchMode (while syncing=true)
-//  - External listeners check syncing flag before doing anything
+//   - Atomic 'syncing' flag guards ALL sync operations (lock-free to avoid deadlocks)
+//   - SwitchMode is the ONLY entry point for mode changes
+//   - Sync functions are ONLY called from within SwitchMode (while syncing=true)
+//   - External listeners check syncing flag before doing anything
 //
 // IMPORTANT: If you need to modify sync behavior, do it HERE, not in panel.go
 type ModeSynchronizer struct {
-	syncing  atomic.Bool         // Atomic flag for lock-free checking
-	mu       sync.Mutex          // Protects builder and callback only
-	mode     binding.String      // Current mode: "text" or "form"
-	textData binding.String      // JSON text data
-	builder  *form.FormBuilder   // Form builder (may be nil)
+	syncing  atomic.Bool       // Atomic flag for lock-free checking
+	mu       sync.Mutex        // Protects builder and callback only
+	mode     binding.String    // Current mode: "text" or "form"
+	textData binding.String    // JSON text data
+	builder  *form.FormBuilder // Form builder (may be nil)
 	logger   *slog.Logger
 
 	// Callbacks for external UI updates
