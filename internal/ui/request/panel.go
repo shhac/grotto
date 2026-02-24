@@ -60,11 +60,11 @@ type RequestPanel struct {
 	sendBtn      *widget.Button
 
 	// Top-level tabs (Request Body | Request Metadata)
-	topLevelTabs     *container.AppTabs
-	bodyTab          *container.TabItem
-	metadataTab      *container.TabItem
-	bodyTabContent   *fyne.Container
-	metadataContent  *fyne.Container
+	topLevelTabs    *container.AppTabs
+	bodyTab         *container.TabItem
+	metadataTab     *container.TabItem
+	bodyTabContent  *fyne.Container
+	metadataContent *fyne.Container
 
 	// Full layout container returned by CreateRenderer
 	content *fyne.Container

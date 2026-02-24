@@ -66,17 +66,17 @@ type MainWindow struct {
 	themeSelector  *widget.Select
 
 	// Streaming state (protected by streamMu)
-	streamMu            sync.Mutex
-	clientStreamHandle  *grpc.ClientStreamHandle
-	clientStreamCancel  context.CancelFunc
-	bidiStreamHandle    *grpc.BidiStreamHandle
-	bidiCancelFunc      context.CancelFunc
-	serverStreamCancel  context.CancelFunc
-	unaryCancel         context.CancelFunc
+	streamMu           sync.Mutex
+	clientStreamHandle *grpc.ClientStreamHandle
+	clientStreamCancel context.CancelFunc
+	bidiStreamHandle   *grpc.BidiStreamHandle
+	bidiCancelFunc     context.CancelFunc
+	serverStreamCancel context.CancelFunc
+	unaryCancel        context.CancelFunc
 
 	// Layout state
-	inBidiMode   bool              // avoid unnecessary rebuilds
-	contentSplit *container.Split   // request/response vertical split (stored for offset changes)
+	inBidiMode   bool             // avoid unnecessary rebuilds
+	contentSplit *container.Split // request/response vertical split (stored for offset changes)
 }
 
 // NewMainWindow creates a new main window with the application layout.
@@ -720,6 +720,7 @@ func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[s
 //	├─────────────────┼────────────────────────────────┤
 //	│  Workspaces     │      Status Bar                │
 //	└─────────────────┴────────────────────────────────┘
+//
 // buildLeftPanel constructs the left panel with service browser and workspace tabs.
 func (w *MainWindow) buildLeftPanel() *fyne.Container {
 	leftTabs := container.NewAppTabs(
