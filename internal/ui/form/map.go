@@ -1,7 +1,9 @@
 package form
 
 import (
+	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -10,6 +12,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
+
+// mapSearchableEnumThreshold matches the threshold in mapper.go for consistency.
+const mapSearchableEnumThreshold = 10
 
 // MapFieldWidget displays a map with add/remove key-value pairs
 type MapFieldWidget struct {
@@ -210,13 +215,45 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		entry := newFormEntry()
 		entry.SetPlaceHolder("key")
 		return entry
-	case protoreflect.Int32Kind, protoreflect.Int64Kind,
-		protoreflect.Uint32Kind, protoreflect.Uint64Kind,
-		protoreflect.Sint32Kind, protoreflect.Sint64Kind,
-		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
-		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind:
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
 		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt32(s)
+		}
+		return entry
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt64(s)
+		}
+		return entry
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint32(s)
+		}
+		return entry
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint64(s)
+		}
 		return entry
 	case protoreflect.BoolKind:
 		return widget.NewCheck("", nil)
@@ -231,25 +268,111 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 	case protoreflect.BoolKind:
 		return widget.NewCheck("", nil)
 	case protoreflect.EnumKind:
-		// Create select with enum values
 		options := make([]string, 0)
 		enumValues := m.valueDesc.Enum().Values()
 		for i := 0; i < enumValues.Len(); i++ {
 			options = append(options, string(enumValues.Get(i).Name()))
+		}
+		if len(options) > mapSearchableEnumThreshold {
+			selEntry := widget.NewSelectEntry(options)
+			selEntry.Wrapping = fyne.TextWrapOff
+			selEntry.Scroll = container.ScrollNone
+			selEntry.SetPlaceHolder("Type to filter...")
+			allOptions := options
+			selEntry.OnChanged = func(text string) {
+				if text == "" {
+					selEntry.SetOptions(allOptions)
+					return
+				}
+				lower := strings.ToLower(text)
+				filtered := make([]string, 0)
+				for _, opt := range allOptions {
+					if strings.Contains(strings.ToLower(opt), lower) {
+						filtered = append(filtered, opt)
+					}
+				}
+				selEntry.SetOptions(filtered)
+			}
+			selEntry.Validator = func(s string) error {
+				if s == "" {
+					return nil
+				}
+				for i := 0; i < enumValues.Len(); i++ {
+					if string(enumValues.Get(i).Name()) == s {
+						return nil
+					}
+				}
+				return fmt.Errorf("unknown enum value: %s", s)
+			}
+			if len(options) > 0 {
+				selEntry.SetText(options[0])
+			}
+			return selEntry
 		}
 		sel := widget.NewSelect(options, nil)
 		if len(options) > 0 {
 			sel.SetSelected(options[0])
 		}
 		return sel
-	case protoreflect.Int32Kind, protoreflect.Int64Kind,
-		protoreflect.Uint32Kind, protoreflect.Uint64Kind,
-		protoreflect.Sint32Kind, protoreflect.Sint64Kind,
-		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
-		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind,
-		protoreflect.FloatKind, protoreflect.DoubleKind:
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
 		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt32(s)
+		}
+		return entry
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt64(s)
+		}
+		return entry
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint32(s)
+		}
+		return entry
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint64(s)
+		}
+		return entry
+	case protoreflect.FloatKind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateFloat(s)
+		}
+		return entry
+	case protoreflect.DoubleKind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateDouble(s)
+		}
 		return entry
 	case protoreflect.StringKind:
 		entry := newFormEntry()
@@ -257,10 +380,16 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		return entry
 	case protoreflect.BytesKind:
 		entry := newFormEntry()
-		entry.SetPlaceHolder("base64 or hex")
+		entry.SetPlaceHolder("Base64 encoded bytes")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			_, err := base64.StdEncoding.DecodeString(s)
+			return err
+		}
 		return entry
 	case protoreflect.MessageKind:
-		// Nested message in map value - create nested form
 		nestedWidget := NewNestedMessageWidget(
 			"Value",
 			m.valueDesc.Message(),
@@ -284,11 +413,20 @@ func (m *MapFieldWidget) extractWidgetValue(w fyne.CanvasObject, fd protoreflect
 		}
 	case protoreflect.EnumKind:
 		if sel, ok := w.(*widget.Select); ok {
-			// Return enum number
 			enumValues := fd.Enum().Values()
 			for i := 0; i < enumValues.Len(); i++ {
 				val := enumValues.Get(i)
 				if string(val.Name()) == sel.Selected {
+					return int32(val.Number())
+				}
+			}
+			return int32(0)
+		}
+		if selEntry, ok := w.(*widget.SelectEntry); ok {
+			enumValues := fd.Enum().Values()
+			for i := 0; i < enumValues.Len(); i++ {
+				val := enumValues.Get(i)
+				if string(val.Name()) == selEntry.Text {
 					return int32(val.Number())
 				}
 			}
@@ -373,21 +511,27 @@ func (m *MapFieldWidget) setWidgetValue(w fyne.CanvasObject, value interface{}, 
 			}
 		}
 	case protoreflect.EnumKind:
+		var enumNum int32
+		switch v := value.(type) {
+		case int32:
+			enumNum = v
+		case float64:
+			enumNum = int32(v)
+		}
+		enumValues := fd.Enum().Values()
 		if sel, ok := w.(*widget.Select); ok {
-			var enumNum int32
-			switch v := value.(type) {
-			case int32:
-				enumNum = v
-			case float64:
-				enumNum = int32(v)
-			}
-
-			// Find enum name by number
-			enumValues := fd.Enum().Values()
 			for i := 0; i < enumValues.Len(); i++ {
 				val := enumValues.Get(i)
 				if int32(val.Number()) == enumNum {
 					sel.SetSelected(string(val.Name()))
+					break
+				}
+			}
+		} else if selEntry, ok := w.(*widget.SelectEntry); ok {
+			for i := 0; i < enumValues.Len(); i++ {
+				val := enumValues.Get(i)
+				if int32(val.Number()) == enumNum {
+					selEntry.SetText(string(val.Name()))
 					break
 				}
 			}

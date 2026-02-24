@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
@@ -34,7 +35,9 @@ type RequestPanel struct {
 	methodLabel *widget.Label
 
 	// Text mode
-	textEditor *widget.Entry // Multiline JSON editor
+	textEditor      *widget.Entry // Multiline JSON editor
+	jsonStatusLabel *canvas.Text  // Inline JSON validity indicator
+	syncErrorLabel  *widget.Label // Shows mode-switch errors
 
 	// Form mode
 	formBuilder     *form.FormBuilder              // Form generator
@@ -99,20 +102,61 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 	p.textEditor.Wrapping = fyne.TextWrapWord
 	p.textEditor.Bind(state.TextData)
 
+	// JSON validity indicator shown below the text editor
+	p.jsonStatusLabel = canvas.NewText("", theme.Color(theme.ColorNameSuccess))
+	p.jsonStatusLabel.TextSize = 11
+	p.jsonStatusLabel.Hide()
+
+	// Wire up JSON validation on text changes
+	state.TextData.AddListener(binding.NewDataListener(func() {
+		text, _ := state.TextData.Get()
+		if text == "" {
+			p.jsonStatusLabel.Hide()
+			return
+		}
+		if json.Valid([]byte(text)) {
+			p.jsonStatusLabel.Text = "Valid JSON"
+			p.jsonStatusLabel.Color = theme.Color(theme.ColorNameSuccess)
+		} else {
+			p.jsonStatusLabel.Text = "Invalid JSON"
+			p.jsonStatusLabel.Color = theme.Color(theme.ColorNameError)
+		}
+		p.jsonStatusLabel.Show()
+		p.jsonStatusLabel.Refresh()
+	}))
+
+	// Sync error label (shown when text→form sync fails)
+	p.syncErrorLabel = widget.NewLabel("")
+	p.syncErrorLabel.Importance = widget.DangerImportance
+	p.syncErrorLabel.Wrapping = fyne.TextWrapWord
+	p.syncErrorLabel.Hide()
+
 	// Form mode placeholder
 	p.formPlaceholder = widget.NewLabel("Select a method to see the form")
 	p.formPlaceholder.Alignment = fyne.TextAlignCenter
 	p.formContainer = container.NewMax(container.NewCenter(p.formPlaceholder))
 
-	// Create mode tabs with text editor and form container
+	// Create mode tabs with text editor (+ status bar) and form container (+ sync error)
+	textContainer := container.NewBorder(nil, p.jsonStatusLabel, nil, nil, p.textEditor)
+	formWithError := container.NewBorder(p.syncErrorLabel, nil, nil, nil, p.formContainer)
 	p.modeTabs = components.NewModeTabs(
-		container.NewMax(p.textEditor),
-		p.formContainer,
+		textContainer,
+		formWithError,
 	)
 
 	// Listen for tab changes - delegate to synchronizer
 	p.modeTabs.SetOnModeChange(func(mode string) {
 		p.synchronizer.SwitchMode(mode)
+	})
+
+	// Show/hide sync error when text→form fails
+	p.synchronizer.SetOnSyncError(func(err error) {
+		if err != nil {
+			p.syncErrorLabel.SetText("Could not populate form: " + err.Error())
+			p.syncErrorLabel.Show()
+		} else {
+			p.syncErrorLabel.Hide()
+		}
 	})
 
 	// Listen for state.Mode changes (programmatic changes from outside)

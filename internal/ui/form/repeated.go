@@ -1,7 +1,9 @@
 package form
 
 import (
+	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -168,6 +170,20 @@ func (r *RepeatedFieldWidget) GetValue() interface{} {
 				} else {
 					values = append(values, sel.Selected)
 				}
+			} else if selEntry, ok := w.(*widget.SelectEntry); ok {
+				// Large enum: SelectEntry with type-to-filter
+				if r.fd.Kind() == protoreflect.EnumKind {
+					enumValues := r.fd.Enum().Values()
+					for i := 0; i < enumValues.Len(); i++ {
+						ev := enumValues.Get(i)
+						if string(ev.Name()) == selEntry.Text {
+							values = append(values, int32(ev.Number()))
+							break
+						}
+					}
+				} else {
+					values = append(values, selEntry.Text)
+				}
 			}
 		}
 	}
@@ -259,6 +275,21 @@ func (r *RepeatedFieldWidget) SetValue(v interface{}) {
 								}
 							}
 						}
+					} else if selEntry, ok := wid.(*widget.SelectEntry); ok {
+						// Large enum: SelectEntry
+						if str, ok := item.(string); ok {
+							selEntry.SetText(str)
+						} else if num, ok := item.(float64); ok {
+							enumValues := r.fd.Enum().Values()
+							enumNum := int32(num)
+							for i := 0; i < enumValues.Len(); i++ {
+								ev := enumValues.Get(i)
+								if int32(ev.Number()) == enumNum {
+									selEntry.SetText(string(ev.Name()))
+									break
+								}
+							}
+						}
 					}
 				}
 			}
@@ -276,33 +307,133 @@ func (r *RepeatedFieldWidget) OnRemove(callback func(index int)) {
 	r.onRemove = callback
 }
 
+// searchableEnumThreshold matches the threshold in mapper.go for consistency.
+const repeatedSearchableEnumThreshold = 10
+
 // createScalarWidget creates an appropriate widget for scalar repeated fields
 func (r *RepeatedFieldWidget) createScalarWidget() fyne.CanvasObject {
 	switch r.fd.Kind() {
 	case protoreflect.BoolKind:
 		return widget.NewCheck("", nil)
 	case protoreflect.EnumKind:
-		// Create select with enum values
 		options := make([]string, 0)
 		enumValues := r.fd.Enum().Values()
 		for i := 0; i < enumValues.Len(); i++ {
 			options = append(options, string(enumValues.Get(i).Name()))
 		}
-		return widget.NewSelect(options, nil)
-	case protoreflect.Int32Kind, protoreflect.Int64Kind,
-		protoreflect.Uint32Kind, protoreflect.Uint64Kind,
-		protoreflect.Sint32Kind, protoreflect.Sint64Kind,
-		protoreflect.Fixed32Kind, protoreflect.Fixed64Kind,
-		protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind,
-		protoreflect.FloatKind, protoreflect.DoubleKind:
+		if len(options) > repeatedSearchableEnumThreshold {
+			selEntry := widget.NewSelectEntry(options)
+			selEntry.Wrapping = fyne.TextWrapOff
+			selEntry.Scroll = container.ScrollNone
+			selEntry.SetPlaceHolder("Type to filter...")
+			allOptions := options
+			selEntry.OnChanged = func(text string) {
+				if text == "" {
+					selEntry.SetOptions(allOptions)
+					return
+				}
+				lower := strings.ToLower(text)
+				filtered := make([]string, 0)
+				for _, opt := range allOptions {
+					if strings.Contains(strings.ToLower(opt), lower) {
+						filtered = append(filtered, opt)
+					}
+				}
+				selEntry.SetOptions(filtered)
+			}
+			selEntry.Validator = func(s string) error {
+				if s == "" {
+					return nil
+				}
+				for i := 0; i < enumValues.Len(); i++ {
+					if string(enumValues.Get(i).Name()) == s {
+						return nil
+					}
+				}
+				return fmt.Errorf("unknown enum value: %s", s)
+			}
+			if len(options) > 0 {
+				selEntry.SetText(options[0])
+			}
+			return selEntry
+		}
+		sel := widget.NewSelect(options, nil)
+		if len(options) > 0 {
+			sel.SetSelected(options[0])
+		}
+		return sel
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
 		entry := newFormEntry()
 		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt32(s)
+		}
+		return entry
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateInt64(s)
+		}
+		return entry
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint32(s)
+		}
+		return entry
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateUint64(s)
+		}
+		return entry
+	case protoreflect.FloatKind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateFloat(s)
+		}
+		return entry
+	case protoreflect.DoubleKind:
+		entry := newFormEntry()
+		entry.SetPlaceHolder("0.0")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			return ValidateDouble(s)
+		}
 		return entry
 	case protoreflect.StringKind:
 		return newFormEntry()
 	case protoreflect.BytesKind:
 		entry := newFormEntry()
-		entry.SetPlaceHolder("base64 or hex")
+		entry.SetPlaceHolder("Base64 encoded bytes")
+		entry.Validator = func(s string) error {
+			if s == "" {
+				return nil
+			}
+			_, err := base64.StdEncoding.DecodeString(s)
+			return err
+		}
 		return entry
 	default:
 		return widget.NewLabel("Unsupported type")

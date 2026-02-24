@@ -4,7 +4,9 @@ import (
 	"fmt"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -103,10 +105,9 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 				fw := MapFieldToWidget(fd)
 				if fw != nil {
 					b.fields[fieldName] = fw
-					// Create form item with label and widget
 					formItem := container.NewBorder(
 						nil, nil,
-						widget.NewLabel(fw.Label+":"), nil,
+						fieldLabelWithType(fw.Label, fd), nil,
 						fw.Widget,
 					)
 					items = append(items, formItem)
@@ -130,10 +131,9 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 					// Checkbox already has label
 					formItem = fw.Widget
 				} else {
-					// Add label for other widgets
 					formItem = container.NewBorder(
 						nil, nil,
-						widget.NewLabel(fw.Label+":"), nil,
+						fieldLabelWithType(fw.Label, fd), nil,
 						fw.Widget,
 					)
 				}
@@ -742,6 +742,25 @@ func (b *FormBuilder) BuildForm(md protoreflect.MessageDescriptor) fyne.CanvasOb
 		*b = *newBuilder
 	}
 	return b.Build()
+}
+
+// fieldLabelWithType creates a label row with the field name and a subdued type hint.
+func fieldLabelWithType(label string, fd protoreflect.FieldDescriptor) fyne.CanvasObject {
+	nameLabel := widget.NewLabel(label + ":")
+	typeHint := canvas.NewText(protoTypeName(fd), theme.Color(theme.ColorNamePlaceHolder))
+	typeHint.TextSize = 11
+	return container.NewHBox(nameLabel, typeHint)
+}
+
+// protoTypeName returns a human-readable type name for a field descriptor.
+func protoTypeName(fd protoreflect.FieldDescriptor) string {
+	if fd.Kind() == protoreflect.MessageKind {
+		return string(fd.Message().Name())
+	}
+	if fd.Kind() == protoreflect.EnumKind {
+		return string(fd.Enum().Name())
+	}
+	return fd.Kind().String()
 }
 
 // stringToMapKey converts a string key to a protoreflect.Value for map keys

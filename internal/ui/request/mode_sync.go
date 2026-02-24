@@ -38,6 +38,7 @@ type ModeSynchronizer struct {
 
 	// Callbacks for external UI updates
 	onModeChanged func(mode string) // Called AFTER sync completes
+	onSyncError   func(err error)   // Called when text→form sync fails
 }
 
 // NewModeSynchronizer creates a new mode synchronizer
@@ -62,6 +63,13 @@ func (s *ModeSynchronizer) SetOnModeChanged(fn func(mode string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onModeChanged = fn
+}
+
+// SetOnSyncError sets callback for when text→form sync fails
+func (s *ModeSynchronizer) SetOnSyncError(fn func(err error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onSyncError = fn
 }
 
 // IsSyncing returns whether a sync operation is in progress
@@ -141,6 +149,20 @@ func (s *ModeSynchronizer) syncTextToForm() {
 
 	if err := builder.FromJSON(textData); err != nil {
 		s.logger.Warn("failed to populate form from JSON", slog.Any("error", err))
+		s.mu.Lock()
+		cb := s.onSyncError
+		s.mu.Unlock()
+		if cb != nil {
+			cb(err)
+		}
+	} else {
+		// Clear any previous error on success
+		s.mu.Lock()
+		cb := s.onSyncError
+		s.mu.Unlock()
+		if cb != nil {
+			cb(nil)
+		}
 	}
 }
 
