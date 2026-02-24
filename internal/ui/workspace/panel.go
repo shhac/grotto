@@ -28,6 +28,9 @@ type WorkspacePanel struct {
 	deleteBtn     *widget.Button
 	newBtn        *widget.Button
 
+	// Empty state
+	placeholder *widget.Label
+
 	// Callbacks
 	onLoad func(workspace domain.Workspace)
 	onSave func() domain.Workspace
@@ -77,6 +80,12 @@ func (p *WorkspacePanel) buildUI() {
 	p.nameEntry = widget.NewEntry()
 	p.nameEntry.SetPlaceHolder("Workspace name")
 
+	// Empty state placeholder
+	p.placeholder = widget.NewLabel("No saved workspaces — use Save Current above")
+	p.placeholder.Alignment = fyne.TextAlignCenter
+	p.placeholder.Wrapping = fyne.TextWrapWord
+	p.placeholder.TextStyle = fyne.TextStyle{Italic: true}
+
 	// Buttons
 	p.saveBtn = widget.NewButton("Save Current", p.handleSave)
 	p.loadBtn = widget.NewButton("Load", p.handleLoad)
@@ -100,13 +109,13 @@ func (p *WorkspacePanel) CreateRenderer() fyne.WidgetRenderer {
 		p.newBtn,
 	)
 
-	// Main layout
+	// Main layout — stack placeholder over list for empty state
 	content := container.NewBorder(
 		title, // top
 		container.NewVBox(p.nameEntry, buttonRow, actionRow), // bottom
-		nil,                               // left
-		nil,                               // right
-		container.NewScroll(p.listWidget), // center
+		nil, // left
+		nil, // right
+		container.NewStack(container.NewScroll(p.listWidget), container.NewCenter(p.placeholder)),
 	)
 
 	return widget.NewSimpleRenderer(content)
@@ -122,6 +131,12 @@ func (p *WorkspacePanel) RefreshList() {
 
 	if err := p.workspaceList.Set(workspaces); err != nil {
 		p.logger.Error("failed to update workspace list", slog.Any("error", err))
+	}
+
+	if len(workspaces) == 0 {
+		p.placeholder.Show()
+	} else {
+		p.placeholder.Hide()
 	}
 }
 

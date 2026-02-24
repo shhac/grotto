@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/shhac/grotto/internal/domain"
 )
@@ -356,6 +357,21 @@ func (r *JSONRepository) recentPath() string {
 	return filepath.Join(r.basePath, recentFile)
 }
 
+// handleCorruptFile renames a corrupt file to <path>.corrupt.<timestamp> and logs a warning.
+func (r *JSONRepository) handleCorruptFile(path string, err error) {
+	backupPath := fmt.Sprintf("%s.corrupt.%d", path, time.Now().Unix())
+	if renameErr := os.Rename(path, backupPath); renameErr != nil {
+		r.logger.Error("failed to rename corrupt file",
+			slog.String("path", path),
+			slog.Any("error", renameErr))
+		return
+	}
+	r.logger.Warn("recovered from corrupt file",
+		slog.String("path", path),
+		slog.String("backup", backupPath),
+		slog.Any("original_error", err))
+}
+
 func (r *JSONRepository) loadRecentList() ([]domain.Connection, error) {
 	path := r.recentPath()
 	fileData, err := os.ReadFile(path)
@@ -369,12 +385,14 @@ func (r *JSONRepository) loadRecentList() ([]domain.Connection, error) {
 
 	_, data, err := unwrapVersioned(fileData)
 	if err != nil {
-		return nil, fmt.Errorf("unwrap recent version: %w", err)
+		r.handleCorruptFile(path, err)
+		return []domain.Connection{}, nil
 	}
 
 	var recent []domain.Connection
 	if err := json.Unmarshal(data, &recent); err != nil {
-		return nil, fmt.Errorf("unmarshal recent connections: %w", err)
+		r.handleCorruptFile(path, err)
+		return []domain.Connection{}, nil
 	}
 
 	return recent, nil
@@ -510,12 +528,14 @@ func (r *JSONRepository) loadHistoryList() ([]domain.HistoryEntry, error) {
 
 	_, data, err := unwrapVersioned(fileData)
 	if err != nil {
-		return nil, fmt.Errorf("unwrap history version: %w", err)
+		r.handleCorruptFile(path, err)
+		return []domain.HistoryEntry{}, nil
 	}
 
 	var history []domain.HistoryEntry
 	if err := json.Unmarshal(data, &history); err != nil {
-		return nil, fmt.Errorf("unmarshal history: %w", err)
+		r.handleCorruptFile(path, err)
+		return []domain.HistoryEntry{}, nil
 	}
 
 	return history, nil

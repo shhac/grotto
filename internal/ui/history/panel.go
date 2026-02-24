@@ -38,6 +38,9 @@ type HistoryPanel struct {
 	statusFilter string                // "" (all), "success", or "error"
 	allEntries   []domain.HistoryEntry // full unfiltered entries from storage
 
+	// Empty state
+	placeholder *widget.Label
+
 	// Callbacks
 	onReplay func(entry domain.HistoryEntry)
 	onSelect func(entry domain.HistoryEntry)
@@ -219,13 +222,19 @@ func (p *HistoryPanel) buildUI() {
 
 	header := container.NewVBox(headerRow, filterRow)
 
-	// Build content
+	// Empty state placeholder
+	p.placeholder = widget.NewLabel("No history yet — send a request to get started")
+	p.placeholder.Alignment = fyne.TextAlignCenter
+	p.placeholder.Wrapping = fyne.TextWrapWord
+	p.placeholder.TextStyle = fyne.TextStyle{Italic: true}
+
+	// Build content — stack placeholder over list so placeholder shows when list is empty
 	p.content = container.NewBorder(
-		header,       // top
-		nil,          // bottom
-		nil,          // left
-		nil,          // right
-		p.listWidget, // center
+		header, // top
+		nil,    // bottom
+		nil,    // left
+		nil,    // right
+		container.NewStack(p.listWidget, container.NewCenter(p.placeholder)),
 	)
 }
 
@@ -294,6 +303,12 @@ func (p *HistoryPanel) applyFilter() {
 			p.statusLabel.SetText(fmt.Sprintf("History (%d of %d)", len(filtered), len(p.allEntries)))
 		} else {
 			p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(p.allEntries)))
+		}
+
+		if len(p.allEntries) == 0 {
+			p.placeholder.Show()
+		} else {
+			p.placeholder.Hide()
 		}
 	})
 }

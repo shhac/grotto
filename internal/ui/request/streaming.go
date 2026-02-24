@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -25,12 +26,14 @@ type StreamingInputWidget struct {
 
 	sendBtn   *widget.Button // Send current message
 	finishBtn *widget.Button // Close stream and get response
+	abortBtn  *widget.Button // Abort/cancel the stream
 
 	statusLabel *widget.Label // Status display
 	totalSent   int           // Total sent including evicted
 
 	onSend   func(json string) // Callback when Send is clicked
 	onFinish func()            // Callback when Finish is clicked
+	onAbort  func()            // Callback when Abort is clicked
 }
 
 // NewStreamingInputWidget creates a new streaming input widget.
@@ -73,6 +76,13 @@ func NewStreamingInputWidget() *StreamingInputWidget {
 	})
 	w.finishBtn.Importance = widget.HighImportance
 
+	w.abortBtn = widget.NewButton("Abort Stream", func() {
+		if w.onAbort != nil {
+			w.onAbort()
+		}
+	})
+	w.abortBtn.Importance = widget.DangerImportance
+
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -85,6 +95,11 @@ func (w *StreamingInputWidget) SetOnSend(fn func(json string)) {
 // SetOnFinish sets the callback for when the stream is finished.
 func (w *StreamingInputWidget) SetOnFinish(fn func()) {
 	w.onFinish = fn
+}
+
+// SetOnAbort sets the callback for when the stream is aborted.
+func (w *StreamingInputWidget) SetOnAbort(fn func()) {
+	w.onAbort = fn
 }
 
 // handleSend sends the current message and adds it to the sent list.
@@ -200,10 +215,12 @@ func (w *StreamingInputWidget) CreateRenderer() fyne.WidgetRenderer {
 		w.messageEntry,
 	)
 
-	// Buttons at bottom - side by side
+	// Buttons at bottom - send/finish on left, abort on right
 	buttonBox := container.NewHBox(
 		w.sendBtn,
 		w.finishBtn,
+		layout.NewSpacer(),
+		w.abortBtn,
 	)
 
 	// Full layout: status at top, buttons at bottom, split in center

@@ -60,6 +60,9 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 		content.Add(accordion)
 	}
 
+	// Wrap content in scroll container so long errors don't overflow
+	scrollable := container.NewVScroll(content)
+
 	// Check if there's a retry action and a handler
 	hasRetry := false
 	for _, action := range uiErr.Actions {
@@ -76,7 +79,7 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 			uiErr.Title,
 			"Retry",
 			"Close",
-			content,
+			scrollable,
 			func(retry bool) {
 				if retry && onRetry != nil {
 					onRetry()
@@ -88,7 +91,7 @@ func ShowGRPCError(err error, window fyne.Window, onRetry func()) {
 		d.Show()
 	} else {
 		// Create simple custom dialog
-		d := dialog.NewCustom(uiErr.Title, "Close", content, window)
+		d := dialog.NewCustom(uiErr.Title, "Close", scrollable, window)
 		d.Resize(fyne.NewSize(500, 400))
 		d.Show()
 	}

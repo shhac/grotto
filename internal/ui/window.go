@@ -221,6 +221,13 @@ func (w *MainWindow) wireCallbacks() {
 		w.handleClientStreamFinish(metadata)
 	})
 
+	// Client streaming: abort
+	w.requestPanel.StreamingInput().SetOnAbort(func() {
+		w.cancelAllStreams()
+		w.requestPanel.StreamingInput().Clear()
+		w.requestPanel.StreamingInput().SetStatus("Stream aborted")
+	})
+
 	// Workspace operations
 	w.workspacePanel.SetOnSave(func() domain.Workspace {
 		return w.captureWorkspaceState()

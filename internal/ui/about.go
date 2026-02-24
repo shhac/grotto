@@ -41,6 +41,7 @@ func ShowShortcutDialog(parent fyne.Window) {
 		{"Text Mode", "\u2318 1"},
 		{"Form Mode", "\u2318 2"},
 		{"Connect / Disconnect", "\u2318 \u21e7 C"},
+		{"Preferences", "\u2318 ,"},
 		{"Cancel Operation", "Escape"},
 	}
 
