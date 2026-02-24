@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/domain"
 	"github.com/shhac/grotto/internal/storage"
@@ -90,6 +91,7 @@ func (p *WorkspacePanel) buildUI() {
 	p.saveBtn = widget.NewButton("Save Current", p.handleSave)
 	p.loadBtn = widget.NewButton("Load", p.handleLoad)
 	p.deleteBtn = widget.NewButton("Delete", p.handleDelete)
+	p.deleteBtn.Importance = widget.DangerImportance
 	p.newBtn = widget.NewButton("New", p.handleNew)
 }
 
@@ -177,20 +179,40 @@ func (p *WorkspacePanel) handleSave() {
 	workspace := p.onSave()
 	workspace.Name = name
 
-	// Save to storage
-	if err := p.storage.SaveWorkspace(workspace); err != nil {
-		p.logger.Error("failed to save workspace",
-			slog.String("name", name),
-			slog.Any("error", err))
-		ShowErrorDialog(p.window, "Failed to save workspace: "+err.Error())
-		return
+	doSave := func() {
+		if err := p.storage.SaveWorkspace(workspace); err != nil {
+			p.logger.Error("failed to save workspace",
+				slog.String("name", name),
+				slog.Any("error", err))
+			ShowErrorDialog(p.window, "Failed to save workspace: "+err.Error())
+			return
+		}
+
+		p.logger.Info("workspace saved", slog.String("name", name))
+		ShowInfoDialog(p.window, "Workspace Saved", "Workspace '"+name+"' saved successfully")
+
+		// Refresh list
+		p.RefreshList()
 	}
 
-	p.logger.Info("workspace saved", slog.String("name", name))
-	ShowInfoDialog(p.window, "Workspace Saved", "Workspace '"+name+"' saved successfully")
+	// Check if workspace already exists and prompt for overwrite
+	existing, _ := p.storage.ListWorkspaces()
+	for _, w := range existing {
+		if w == name {
+			dialog.ShowConfirm("Overwrite Workspace",
+				"Workspace '"+name+"' already exists. Overwrite it?",
+				func(confirmed bool) {
+					if confirmed {
+						doSave()
+					}
+				},
+				p.window,
+			)
+			return
+		}
+	}
 
-	// Refresh list
-	p.RefreshList()
+	doSave()
 }
 
 // handleLoad loads the selected workspace
@@ -218,10 +240,9 @@ func (p *WorkspacePanel) handleLoad() {
 
 	p.logger.Info("workspace loaded", slog.String("name", name))
 
-	// Apply via callback
+	// Apply via callback — no "loaded" dialog here because workspace
+	// loading may trigger async connection. Success is evident from UI state.
 	p.onLoad(*workspace)
-
-	ShowInfoDialog(p.window, "Workspace Loaded", "Workspace '"+name+"' loaded successfully")
 }
 
 // handleDelete deletes the selected workspace

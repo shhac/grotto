@@ -4,9 +4,7 @@ import (
 	"fmt"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -747,8 +745,8 @@ func (b *FormBuilder) BuildForm(md protoreflect.MessageDescriptor) fyne.CanvasOb
 // fieldLabelWithType creates a label row with the field name and a subdued type hint.
 func fieldLabelWithType(label string, fd protoreflect.FieldDescriptor) fyne.CanvasObject {
 	nameLabel := widget.NewLabel(label + ":")
-	typeHint := canvas.NewText(protoTypeName(fd), theme.Color(theme.ColorNamePlaceHolder))
-	typeHint.TextSize = 11
+	typeHint := widget.NewLabel(protoTypeName(fd))
+	typeHint.Importance = widget.LowImportance
 	return container.NewHBox(nameLabel, typeHint)
 }
 

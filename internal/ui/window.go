@@ -879,8 +879,8 @@ func (w *MainWindow) SetContent() {
 	// Bottom bar: status on left, theme selector on right
 	bottomBar := container.NewBorder(
 		nil, nil, // top, bottom
-		w.statusBar, nil, // left (status), right
-		w.themeSelector, // center (theme selector pushed right)
+		w.statusBar,    // left (status)
+		w.themeSelector, // right (theme selector)
 	)
 
 	// Right side: vertical split with request, response, and bottom bar
@@ -1252,8 +1252,8 @@ func (w *MainWindow) switchToBidiPanel() {
 	// Bottom bar: status on left, theme selector on right
 	bottomBar := container.NewBorder(
 		nil, nil, // top, bottom
-		w.statusBar, nil, // left (status), right
-		w.themeSelector, // center (theme selector pushed right)
+		w.statusBar,     // left (status)
+		w.themeSelector, // right (theme selector)
 	)
 
 	rightPanel := container.NewBorder(
@@ -1263,8 +1263,12 @@ func (w *MainWindow) switchToBidiPanel() {
 		w.bidiPanel,
 	)
 
+	// Preserve browser split offset across mode switches
+	savedOffset := w.browserSplit.Offset
+
 	mainSplit := container.NewHSplit(leftPanel, rightPanel)
 	mainSplit.SetOffset(0.3)
+	w.browserSplit.SetOffset(savedOffset)
 	w.window.SetContent(container.NewBorder(w.connectionBar, nil, nil, nil, mainSplit))
 	w.inBidiMode = true
 }

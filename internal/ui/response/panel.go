@@ -101,7 +101,7 @@ func (p *ResponsePanel) initializeComponents() {
 	p.copyBtn.Hide()
 
 	// Copy compact JSON button (hidden until there's a response)
-	p.copyCompactBtn = widget.NewButton("{}", func() {
+	p.copyCompactBtn = widget.NewButtonWithIcon("min", theme.ContentCopyIcon(), func() {
 		text, _ := p.state.TextData.Get()
 		if text == "" {
 			return

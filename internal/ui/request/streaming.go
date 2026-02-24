@@ -74,7 +74,7 @@ func NewStreamingInputWidget() *StreamingInputWidget {
 	w.finishBtn = widget.NewButton("Close Stream", func() {
 		w.handleFinish()
 	})
-	w.finishBtn.Importance = widget.HighImportance
+	w.finishBtn.Importance = widget.WarningImportance
 
 	w.abortBtn = widget.NewButton("Abort Stream", func() {
 		if w.onAbort != nil {

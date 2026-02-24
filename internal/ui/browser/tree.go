@@ -196,7 +196,7 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 			// Error service: show warning icon and indicator
 			icon.Resource = theme.WarningIcon()
 			icon.Refresh()
-			label.SetText(fmt.Sprintf("%s  ⚠", displayName))
+			label.SetText(displayName)
 			label.TextStyle = fyne.TextStyle{Italic: true}
 			label.Importance = widget.WarningImportance
 		} else {
@@ -226,7 +226,11 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 
 					// Format method name with subtle type badge
 					typeBadge := b.getMethodTypeBadge(method)
-					label.SetText(fmt.Sprintf("%s  %s", method.Name, typeBadge))
+					name := method.Name
+					if typeBadge != "" {
+						name += "  " + typeBadge
+					}
+					label.SetText(name)
 					label.TextStyle = fyne.TextStyle{}
 					label.Importance = widget.MediumImportance
 				}

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
@@ -36,7 +35,7 @@ type RequestPanel struct {
 
 	// Text mode
 	textEditor      *widget.Entry // Multiline JSON editor
-	jsonStatusLabel *canvas.Text  // Inline JSON validity indicator
+	jsonStatusLabel *widget.Label // Inline JSON validity indicator
 	syncErrorLabel  *widget.Label // Shows mode-switch errors
 
 	// Form mode
@@ -103,8 +102,7 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 	p.textEditor.Bind(state.TextData)
 
 	// JSON validity indicator shown below the text editor
-	p.jsonStatusLabel = canvas.NewText("", theme.Color(theme.ColorNameSuccess))
-	p.jsonStatusLabel.TextSize = 11
+	p.jsonStatusLabel = widget.NewLabel("")
 	p.jsonStatusLabel.Hide()
 
 	// Wire up JSON validation on text changes
@@ -115,11 +113,11 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 			return
 		}
 		if json.Valid([]byte(text)) {
-			p.jsonStatusLabel.Text = "Valid JSON"
-			p.jsonStatusLabel.Color = theme.Color(theme.ColorNameSuccess)
+			p.jsonStatusLabel.SetText("Valid JSON")
+			p.jsonStatusLabel.Importance = widget.SuccessImportance
 		} else {
-			p.jsonStatusLabel.Text = "Invalid JSON"
-			p.jsonStatusLabel.Color = theme.Color(theme.ColorNameError)
+			p.jsonStatusLabel.SetText("Invalid JSON")
+			p.jsonStatusLabel.Importance = widget.DangerImportance
 		}
 		p.jsonStatusLabel.Show()
 		p.jsonStatusLabel.Refresh()

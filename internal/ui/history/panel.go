@@ -220,7 +220,7 @@ func (p *HistoryPanel) buildUI() {
 		p.filterEntry,
 	)
 
-	header := container.NewVBox(headerRow, filterRow)
+	header := container.NewVBox(headerRow, filterRow, widget.NewSeparator())
 
 	// Empty state placeholder
 	p.placeholder = widget.NewLabel("No history yet — send a request to get started")
