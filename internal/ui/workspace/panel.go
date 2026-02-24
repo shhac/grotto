@@ -35,6 +35,9 @@ type WorkspacePanel struct {
 	// Callbacks
 	onLoad func(workspace domain.Workspace)
 	onSave func() domain.Workspace
+
+	// Content container
+	content *fyne.Container
 }
 
 // NewWorkspacePanel creates a new workspace management panel
@@ -48,6 +51,7 @@ func NewWorkspacePanel(storage storage.Repository, logger *slog.Logger, window f
 
 	p.ExtendBaseWidget(p)
 	p.buildUI()
+	p.initializeComponents()
 	p.RefreshList()
 
 	return p
@@ -95,8 +99,8 @@ func (p *WorkspacePanel) buildUI() {
 	p.newBtn = widget.NewButton("New", p.handleNew)
 }
 
-// CreateRenderer implements the fyne.Widget interface
-func (p *WorkspacePanel) CreateRenderer() fyne.WidgetRenderer {
+// initializeComponents creates the layout once and stores it in p.content.
+func (p *WorkspacePanel) initializeComponents() {
 	// Title
 	title := widget.NewLabelWithStyle("Workspaces", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -112,15 +116,18 @@ func (p *WorkspacePanel) CreateRenderer() fyne.WidgetRenderer {
 	)
 
 	// Main layout — stack placeholder over list for empty state
-	content := container.NewBorder(
+	p.content = container.NewBorder(
 		title, // top
 		container.NewVBox(p.nameEntry, buttonRow, actionRow), // bottom
 		nil, // left
 		nil, // right
 		container.NewStack(container.NewScroll(p.listWidget), container.NewCenter(p.placeholder)),
 	)
+}
 
-	return widget.NewSimpleRenderer(content)
+// CreateRenderer implements the fyne.Widget interface
+func (p *WorkspacePanel) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(p.content)
 }
 
 // RefreshList reloads workspace list from storage

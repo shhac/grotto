@@ -8,11 +8,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-)
-
-const (
-	maxStreamMessages = 1000
-	evictionBatch     = 200
+	"github.com/shhac/grotto/internal/ui/streamconst"
 )
 
 // StreamingInputWidget provides UI for client streaming RPCs.
@@ -121,10 +117,10 @@ func (w *StreamingInputWidget) handleSend() {
 	w.totalSent++
 
 	// Evict oldest if over cap
-	if count := w.sentMessages.Length(); count > maxStreamMessages {
+	if count := w.sentMessages.Length(); count > streamconst.MaxStreamMessages {
 		all, err := w.sentMessages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = w.sentMessages.Set(all[evictionBatch:])
+		if err == nil && len(all) > streamconst.MaxStreamMessages {
+			_ = w.sentMessages.Set(all[streamconst.EvictionBatch:])
 		}
 	}
 

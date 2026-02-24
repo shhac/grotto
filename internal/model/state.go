@@ -39,7 +39,6 @@ type RequestState struct {
 	Mode     binding.String     // "text" or "form"
 	TextData binding.String     // JSON representation
 	Metadata binding.StringList // Request metadata headers
-	Dirty    binding.Bool       // Whether request has unsaved changes
 }
 
 // NewRequestState creates a new RequestState with initialized bindings.
@@ -51,42 +50,29 @@ func NewRequestState() *RequestState {
 		Mode:     mode,
 		TextData: binding.NewString(),
 		Metadata: binding.NewStringList(),
-		Dirty:    binding.NewBool(),
 	}
 }
 
 // ResponseState represents the state of the response panel.
 type ResponseState struct {
-	Mode      binding.String      // "text" or "form"
-	TextData  binding.String      // JSON response
-	Loading   binding.Bool        // Whether request is in progress
-	Streaming binding.Bool        // Whether response is streaming
-	Messages  binding.UntypedList // For streaming responses (accumulates messages)
-	Error     binding.String      // Error message if request failed
-	Duration  binding.String      // Request duration (e.g., "123ms")
-	Size      binding.String      // Response body size (e.g., "1.2 KB")
+	TextData binding.String // JSON response
+	Loading  binding.Bool   // Whether request is in progress
+	Error    binding.String // Error message if request failed
+	Duration binding.String // Request duration (e.g., "123ms")
+	Size     binding.String // Response body size (e.g., "1.2 KB")
 }
 
 // NewResponseState creates a new ResponseState with initialized bindings.
 func NewResponseState() *ResponseState {
-	mode := binding.NewString()
-	_ = mode.Set("text") // Default to text mode
-
 	loading := binding.NewBool()
 	_ = loading.Set(false) // Default to not loading
 
-	streaming := binding.NewBool()
-	_ = streaming.Set(false) // Default to not streaming
-
 	return &ResponseState{
-		Mode:      mode,
-		TextData:  binding.NewString(),
-		Loading:   loading,
-		Streaming: streaming,
-		Messages:  binding.NewUntypedList(),
-		Error:     binding.NewString(),
-		Duration:  binding.NewString(),
-		Size:      binding.NewString(),
+		TextData: binding.NewString(),
+		Loading:  loading,
+		Error:    binding.NewString(),
+		Duration: binding.NewString(),
+		Size:     binding.NewString(),
 	}
 }
 

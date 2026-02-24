@@ -418,6 +418,11 @@ func (r *JSONRepository) saveRecentList(recent []domain.Connection) error {
 }
 
 func (r *JSONRepository) removeDuplicate(recent []domain.Connection, conn domain.Connection) []domain.Connection {
+	return removeDuplicateConnection(recent, conn)
+}
+
+// removeDuplicateConnection removes a connection from the list by matching address and TLS.
+func removeDuplicateConnection(recent []domain.Connection, conn domain.Connection) []domain.Connection {
 	var filtered []domain.Connection
 	for _, r := range recent {
 		if r.Address != conn.Address || r.TLS.Enabled != conn.TLS.Enabled {

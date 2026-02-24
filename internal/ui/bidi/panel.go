@@ -11,11 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/ui/response"
-)
-
-const (
-	maxStreamMessages = 1000
-	evictionBatch     = 200
+	"github.com/shhac/grotto/internal/ui/streamconst"
 )
 
 // BidiStreamPanel provides UI for bidirectional streaming RPCs.
@@ -270,10 +266,10 @@ func (p *BidiStreamPanel) handleSend() {
 	p.totalSent++
 
 	// Evict oldest if over cap
-	if count := p.sentMessages.Length(); count > maxStreamMessages {
+	if count := p.sentMessages.Length(); count > streamconst.MaxStreamMessages {
 		all, err := p.sentMessages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = p.sentMessages.Set(all[evictionBatch:])
+		if err == nil && len(all) > streamconst.MaxStreamMessages {
+			_ = p.sentMessages.Set(all[streamconst.EvictionBatch:])
 		}
 	}
 
@@ -324,10 +320,10 @@ func (p *BidiStreamPanel) AddReceived(json string) {
 	p.totalReceived++
 
 	// Evict oldest if over cap
-	if count := p.receivedMessages.Length(); count > maxStreamMessages {
+	if count := p.receivedMessages.Length(); count > streamconst.MaxStreamMessages {
 		all, err := p.receivedMessages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = p.receivedMessages.Set(all[evictionBatch:])
+		if err == nil && len(all) > streamconst.MaxStreamMessages {
+			_ = p.receivedMessages.Set(all[streamconst.EvictionBatch:])
 		}
 	}
 

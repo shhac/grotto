@@ -115,13 +115,7 @@ func (m *MemoryRepository) ClearRecentConnections() error {
 // Helper methods
 
 func (m *MemoryRepository) removeDuplicate(recent []domain.Connection, conn domain.Connection) []domain.Connection {
-	var filtered []domain.Connection
-	for _, r := range recent {
-		if r.Address != conn.Address || r.TLS.Enabled != conn.TLS.Enabled {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
+	return removeDuplicateConnection(recent, conn)
 }
 
 // AddHistoryEntry adds a history entry to the history list

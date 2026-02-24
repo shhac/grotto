@@ -9,11 +9,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-)
-
-const (
-	maxStreamMessages = 1000
-	evictionBatch     = 200
+	"github.com/shhac/grotto/internal/ui/streamconst"
 )
 
 // StreamingMessagesWidget displays streaming RPC messages as they arrive.
@@ -144,10 +140,10 @@ func (w *StreamingMessagesWidget) AddMessage(jsonStr string) {
 
 	// Evict oldest messages if over cap
 	count := w.messages.Length()
-	if count > maxStreamMessages {
+	if count > streamconst.MaxStreamMessages {
 		all, err := w.messages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = w.messages.Set(all[evictionBatch:])
+		if err == nil && len(all) > streamconst.MaxStreamMessages {
+			_ = w.messages.Set(all[streamconst.EvictionBatch:])
 			count = w.messages.Length()
 		}
 	}
