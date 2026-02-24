@@ -97,10 +97,14 @@ func (p *BidiStreamPanel) initializeComponents() {
 			return entry
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
-			// Update the entry with the message text
+			// Update the entry with the message text.
+			// Use SetText instead of Bind to avoid listener accumulation:
+			// Bind registers a listener on the binding item, and with UntypedList
+			// returning fresh wrappers, old listeners are never cleaned up.
 			entry := obj.(*widget.Entry)
 			if strItem, ok := item.(binding.String); ok {
-				entry.Bind(strItem)
+				val, _ := strItem.Get()
+				entry.SetText(val)
 			}
 		},
 	)
