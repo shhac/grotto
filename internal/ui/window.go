@@ -77,6 +77,9 @@ type MainWindow struct {
 	// Layout state
 	inBidiMode   bool             // avoid unnecessary rebuilds
 	contentSplit *container.Split // request/response vertical split (stored for offset changes)
+
+	// Per-method request cache: "service/method" → last JSON text
+	methodRequestCache map[string]string
 }
 
 // NewMainWindow creates a new main window with the application layout.
@@ -91,11 +94,12 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	connState := model.NewConnectionUIState()
 
 	mw := &MainWindow{
-		window:    window,
-		state:     app.State(),
-		logger:    app.Logger(),
-		app:       app,
-		connState: connState,
+		window:             window,
+		state:              app.State(),
+		logger:             app.Logger(),
+		app:                app,
+		connState:          connState,
+		methodRequestCache: make(map[string]string),
 	}
 
 	// Create real UI components
@@ -390,6 +394,7 @@ func (w *MainWindow) handleDisconnect() {
 		_ = w.state.SelectedService.Set("")
 		_ = w.state.SelectedMethod.Set("")
 		w.requestPanel.SetSendEnabled(false)
+		w.methodRequestCache = make(map[string]string)
 
 		// Update connection state to reflect disconnection
 		_ = w.connState.State.Set("disconnected")
@@ -413,6 +418,16 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		slog.String("service", service.FullName),
 		slog.String("method", method.Name),
 	)
+
+	// Cache the current method's request JSON before switching
+	prevService, _ := w.state.SelectedService.Get()
+	prevMethod, _ := w.state.SelectedMethod.Get()
+	if prevService != "" && prevMethod != "" {
+		currentJSON, _ := w.state.Request.TextData.Get()
+		if currentJSON != "" {
+			w.methodRequestCache[prevService+"/"+prevMethod] = currentJSON
+		}
+	}
 
 	// Update state
 	_ = w.state.SelectedService.Set(service.FullName)
@@ -469,6 +484,13 @@ func (w *MainWindow) handleMethodSelect(service domain.Service, method domain.Me
 		// Update request panel with method descriptor
 		w.requestPanel.SetMethod(method.Name, protoDesc)
 		w.requestPanel.SetSendEnabled(true)
+
+		// Restore cached request JSON for this method (if any)
+		cacheKey := service.FullName + "/" + method.Name
+		if cached, ok := w.methodRequestCache[cacheKey]; ok {
+			_ = w.state.Request.TextData.Set(cached)
+			w.requestPanel.SyncTextToForm()
+		}
 
 		// Set client streaming mode based on method type
 		w.requestPanel.SetClientStreaming(method.IsClientStream)
@@ -1753,11 +1775,38 @@ func (w *MainWindow) setupMainMenu() {
 		Modifier: fyne.KeyModifierSuper,
 	}
 
+	filterServicesItem := fyne.NewMenuItem("Filter Services", func() {
+		w.serviceBrowser.FocusFilter()
+	})
+	filterServicesItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyP,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
+	expandAllItem := fyne.NewMenuItem("Expand All Services", func() {
+		w.serviceBrowser.ExpandAll()
+	})
+	expandAllItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyE,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}
+
+	collapseAllItem := fyne.NewMenuItem("Collapse All Services", func() {
+		w.serviceBrowser.CollapseAll()
+	})
+	collapseAllItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyW,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}
+
 	viewMenu := fyne.NewMenu("View",
 		textModeItem,
 		formModeItem,
 		fyne.NewMenuItemSeparator(),
 		focusBrowserItem,
+		filterServicesItem,
+		expandAllItem,
+		collapseAllItem,
 	)
 
 	// Help menu - shortcuts reference and about dialog

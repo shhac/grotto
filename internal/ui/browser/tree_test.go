@@ -528,6 +528,53 @@ func TestServiceBrowser_SortedAlphabetically(t *testing.T) {
 	}, methodUIDs)
 }
 
+func TestServiceBrowser_FilterServices(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	services := binding.NewUntypedList()
+	services.Append(domain.Service{
+		Name: "UserService", FullName: "example.UserService",
+		Methods: []domain.Method{
+			{Name: "GetUser", FullName: "example.UserService.GetUser"},
+			{Name: "ListUsers", FullName: "example.UserService.ListUsers"},
+		},
+	})
+	services.Append(domain.Service{
+		Name: "ProductService", FullName: "example.ProductService",
+		Methods: []domain.Method{
+			{Name: "GetProduct", FullName: "example.ProductService.GetProduct"},
+		},
+	})
+
+	browser := NewServiceBrowser(services)
+
+	// No filter — all services shown
+	assert.Len(t, browser.getServiceUIDs(), 2)
+
+	// Filter by service name
+	browser.filterQuery = "user"
+	uids := browser.getServiceUIDs()
+	assert.Len(t, uids, 1)
+	assert.Equal(t, "example.UserService", uids[0])
+
+	// Filter by method name — surfaces the parent service
+	browser.filterQuery = "getproduct"
+	uids = browser.getServiceUIDs()
+	assert.Len(t, uids, 1)
+	assert.Equal(t, "example.ProductService", uids[0])
+
+	// Filter methods within a service
+	browser.filterQuery = "list"
+	methods := browser.getMethodUIDs("example.UserService")
+	assert.Len(t, methods, 1)
+	assert.Equal(t, "example.UserService:ListUsers", methods[0])
+
+	// Clear filter
+	browser.filterQuery = ""
+	assert.Len(t, browser.getServiceUIDs(), 2)
+}
+
 func TestBuildDisplayNames_NoCollision(t *testing.T) {
 	index := map[string]domain.Service{
 		"com.example.api.UserService":    {Name: "UserService", FullName: "com.example.api.UserService"},

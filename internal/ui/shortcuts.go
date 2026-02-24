@@ -81,6 +81,33 @@ func (w *MainWindow) setupKeyboardShortcuts() {
 		w.serviceBrowser.FocusTree()
 	})
 
+	// Cmd+P: Focus service filter
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyP,
+		Modifier: fyne.KeyModifierSuper,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: focus service filter")
+		w.serviceBrowser.FocusFilter()
+	})
+
+	// Cmd+Shift+E: Expand all services
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyE,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: expand all services")
+		w.serviceBrowser.ExpandAll()
+	})
+
+	// Cmd+Shift+W: Collapse all services
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyW,
+		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: collapse all services")
+		w.serviceBrowser.CollapseAll()
+	})
+
 	// Cmd+Shift+C: Toggle connect/disconnect
 	canvas.AddShortcut(&desktop.CustomShortcut{
 		KeyName:  fyne.KeyC,

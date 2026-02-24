@@ -29,6 +29,10 @@ type ServiceBrowser struct {
 	serviceUIDs  []string
 	displayNames map[string]string // FullName → disambiguated short display name
 
+	// Filter
+	filterEntry *widget.Entry
+	filterQuery string
+
 	// Callbacks
 	onMethodSelect func(service domain.Service, method domain.Method)
 	onServiceError func(service domain.Service)
@@ -60,6 +64,14 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	b.placeholder.Alignment = fyne.TextAlignCenter
 	b.placeholder.Wrapping = fyne.TextWrapWord
 	b.placeholder.TextStyle = fyne.TextStyle{Italic: true}
+
+	// Filter entry for searching services and methods
+	b.filterEntry = widget.NewEntry()
+	b.filterEntry.SetPlaceHolder("Filter services...")
+	b.filterEntry.OnChanged = func(query string) {
+		b.filterQuery = strings.ToLower(query)
+		b.tree.Refresh()
+	}
 
 	// Stack container: shows placeholder when empty, tree when populated
 	// Use Border with spacers for vertical centering — NewCenter gives minimum width
@@ -100,6 +112,27 @@ func (b *ServiceBrowser) SelectMethod(serviceName, methodName string) {
 func (b *ServiceBrowser) FocusTree() {
 	if c := fyne.CurrentApp().Driver().CanvasForObject(b.tree); c != nil {
 		c.Focus(b.tree)
+	}
+}
+
+// FocusFilter moves keyboard focus to the filter entry.
+func (b *ServiceBrowser) FocusFilter() {
+	if c := fyne.CurrentApp().Driver().CanvasForObject(b.filterEntry); c != nil {
+		c.Focus(b.filterEntry)
+	}
+}
+
+// ExpandAll opens all service branches in the tree.
+func (b *ServiceBrowser) ExpandAll() {
+	for _, uid := range b.serviceUIDs {
+		b.tree.OpenBranch(uid)
+	}
+}
+
+// CollapseAll closes all service branches in the tree.
+func (b *ServiceBrowser) CollapseAll() {
+	for _, uid := range b.serviceUIDs {
+		b.tree.CloseBranch(uid)
 	}
 }
 
@@ -298,24 +331,40 @@ func (b *ServiceBrowser) rebuildIndex() {
 	// (content may be nil during initial construction)
 	if b.content != nil {
 		if len(uids) == 0 {
+			b.filterEntry.SetText("")
+			b.filterQuery = ""
 			b.content.Objects = []fyne.CanvasObject{
 				container.NewBorder(nil, nil, nil, nil,
 					container.NewVBox(layout.NewSpacer(), b.placeholder, layout.NewSpacer()),
 				),
 			}
 		} else {
-			b.content.Objects = []fyne.CanvasObject{b.tree}
+			b.content.Objects = []fyne.CanvasObject{
+				container.NewBorder(b.filterEntry, nil, nil, nil, b.tree),
+			}
 		}
 		b.content.Refresh()
 	}
 }
 
-// getServiceUIDs returns the UIDs of all services
+// getServiceUIDs returns the UIDs of all services, filtered if a query is active.
 func (b *ServiceBrowser) getServiceUIDs() []string {
-	return b.serviceUIDs
+	if b.filterQuery == "" {
+		return b.serviceUIDs
+	}
+
+	var filtered []string
+	for _, uid := range b.serviceUIDs {
+		service := b.findService(uid)
+		// Show service if its name matches or any of its methods match
+		if b.serviceMatchesFilter(uid, service) {
+			filtered = append(filtered, uid)
+		}
+	}
+	return filtered
 }
 
-// getMethodUIDs returns the UIDs of all methods for a given service
+// getMethodUIDs returns the UIDs of all methods for a given service, filtered if a query is active.
 func (b *ServiceBrowser) getMethodUIDs(serviceName string) []string {
 	service := b.findService(serviceName)
 	if service == nil {
@@ -324,11 +373,39 @@ func (b *ServiceBrowser) getMethodUIDs(serviceName string) []string {
 
 	uids := make([]string, 0, len(service.Methods))
 	for _, method := range service.Methods {
-		// Format: "service:method"
-		uids = append(uids, fmt.Sprintf("%s:%s", serviceName, method.Name))
+		uid := fmt.Sprintf("%s:%s", serviceName, method.Name)
+		if b.filterQuery == "" || b.methodMatchesFilter(method) {
+			uids = append(uids, uid)
+		}
 	}
 	sort.Strings(uids)
 	return uids
+}
+
+// serviceMatchesFilter returns true if a service or any of its methods match the filter.
+func (b *ServiceBrowser) serviceMatchesFilter(uid string, service *domain.Service) bool {
+	query := b.filterQuery
+	// Check service full name and display name
+	if strings.Contains(strings.ToLower(uid), query) {
+		return true
+	}
+	if service != nil {
+		if strings.Contains(strings.ToLower(service.Name), query) {
+			return true
+		}
+		// Check if any method matches
+		for _, method := range service.Methods {
+			if b.methodMatchesFilter(method) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// methodMatchesFilter returns true if a method name matches the filter.
+func (b *ServiceBrowser) methodMatchesFilter(method domain.Method) bool {
+	return strings.Contains(strings.ToLower(method.Name), b.filterQuery)
 }
 
 // findService finds a service by its full name using the O(1) index
