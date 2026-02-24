@@ -249,7 +249,6 @@ func (c *ConnectionBar) restoreTLSFromHistory(addr string) {
 	for _, conn := range c.recentConns {
 		if conn.Address == addr || formatConnectionDisplay(conn) == addr {
 			c.tlsSettings = conn.TLS
-			c.tlsSettings.Enabled = conn.UseTLS
 			c.updateTLSIcon()
 			return
 		}

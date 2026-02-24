@@ -117,7 +117,7 @@ func (m *MemoryRepository) ClearRecentConnections() error {
 func (m *MemoryRepository) removeDuplicate(recent []domain.Connection, conn domain.Connection) []domain.Connection {
 	var filtered []domain.Connection
 	for _, r := range recent {
-		if r.Address != conn.Address || r.UseTLS != conn.UseTLS {
+		if r.Address != conn.Address || r.TLS.Enabled != conn.TLS.Enabled {
 			filtered = append(filtered, r)
 		}
 	}

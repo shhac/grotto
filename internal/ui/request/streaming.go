@@ -134,22 +134,6 @@ func (w *StreamingInputWidget) handleFinish() {
 	w.statusLabel.SetText("Stream closed")
 }
 
-// AddSent adds a sent message to the list (for programmatic use).
-func (w *StreamingInputWidget) AddSent(json string) {
-	_ = w.sentMessages.Append(json)
-	w.totalSent++
-
-	if count := w.sentMessages.Length(); count > maxStreamMessages {
-		all, err := w.sentMessages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = w.sentMessages.Set(all[evictionBatch:])
-		}
-	}
-
-	w.sentList.Refresh()
-	w.updateStatus()
-}
-
 // Clear resets the widget for a new stream.
 func (w *StreamingInputWidget) Clear() {
 	w.messageEntry.SetText("")

@@ -282,7 +282,6 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 		// Connect
 		cfg := domain.Connection{
 			Address: address,
-			UseTLS:  tlsSettings.Enabled, // Use TLS if enabled in settings
 			TLS:     tlsSettings,
 		}
 
@@ -1138,7 +1137,6 @@ func (w *MainWindow) captureWorkspaceState() domain.Workspace {
 		tlsSettings := w.connectionBar.GetTLSSettings()
 		workspace.CurrentConnection = &domain.Connection{
 			Address: address,
-			UseTLS:  tlsSettings.Enabled,
 			TLS:     tlsSettings,
 		}
 	}
@@ -1564,7 +1562,6 @@ func (w *MainWindow) recordHistoryEntry(address, method, requestJSON string, req
 	}
 	if w.connectionBar != nil {
 		currentConn.TLS = w.connectionBar.GetTLSSettings()
-		currentConn.UseTLS = currentConn.TLS.Enabled
 	}
 
 	// Convert response metadata to map
@@ -1620,7 +1617,6 @@ func (w *MainWindow) recordStreamHistoryEntry(address, method, requestJSON strin
 	}
 	if w.connectionBar != nil {
 		currentConn.TLS = w.connectionBar.GetTLSSettings()
-		currentConn.UseTLS = currentConn.TLS.Enabled
 	}
 
 	entry := domain.HistoryEntry{

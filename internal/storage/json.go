@@ -402,7 +402,7 @@ func (r *JSONRepository) saveRecentList(recent []domain.Connection) error {
 func (r *JSONRepository) removeDuplicate(recent []domain.Connection, conn domain.Connection) []domain.Connection {
 	var filtered []domain.Connection
 	for _, r := range recent {
-		if r.Address != conn.Address || r.UseTLS != conn.UseTLS {
+		if r.Address != conn.Address || r.TLS.Enabled != conn.TLS.Enabled {
 			filtered = append(filtered, r)
 		}
 	}

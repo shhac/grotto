@@ -81,7 +81,7 @@ func (m *ConnectionManager) Connect(ctx context.Context, cfg domain.Connection) 
 
 	// Configure TLS/credentials
 	var creds credentials.TransportCredentials
-	if cfg.UseTLS || cfg.TLS.Enabled {
+	if cfg.TLS.Enabled {
 		// Build TLS configuration
 		tlsConfig, err := m.buildTLSConfig(cfg.TLS)
 		if err != nil {
@@ -140,7 +140,7 @@ func (m *ConnectionManager) Connect(ctx context.Context, cfg domain.Connection) 
 
 	m.logger.Info("gRPC connection established",
 		slog.String("address", cfg.Address),
-		slog.Bool("tls", cfg.UseTLS),
+		slog.Bool("tls", cfg.TLS.Enabled),
 	)
 	m.updateState(StateConnected, "Connected to "+cfg.Address)
 

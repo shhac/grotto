@@ -56,28 +56,8 @@ func New(fyneApp fyne.App, cfg *Config) (*App, error) {
 	// Initialize application state
 	state := model.NewApplicationState()
 
-	// Wire connection manager state changes to UI state
-	connUIState := model.NewConnectionUIState()
+	// Wire connection manager state changes to application state
 	connManager.SetStateCallback(func(connState grpc.ConnectionState, message string) {
-		// Map connection state to UI state string
-		var uiState string
-		switch connState {
-		case grpc.StateDisconnected:
-			uiState = "disconnected"
-		case grpc.StateConnecting:
-			uiState = "connecting"
-		case grpc.StateConnected:
-			uiState = "connected"
-		case grpc.StateError:
-			uiState = "error"
-		default:
-			uiState = "disconnected"
-		}
-
-		_ = connUIState.State.Set(uiState)
-		_ = connUIState.Message.Set(message)
-
-		// Also update the main state's Connected binding
 		_ = state.Connected.Set(connState == grpc.StateConnected)
 	})
 

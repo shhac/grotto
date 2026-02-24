@@ -318,22 +318,6 @@ func (p *BidiStreamPanel) handleAbort() {
 	p.statusLabel.SetText("Stream aborted")
 }
 
-// AddSent adds a sent message to the list (for programmatic use).
-func (p *BidiStreamPanel) AddSent(json string) {
-	_ = p.sentMessages.Append(json)
-	p.totalSent++
-
-	if count := p.sentMessages.Length(); count > maxStreamMessages {
-		all, err := p.sentMessages.Get()
-		if err == nil && len(all) > maxStreamMessages {
-			_ = p.sentMessages.Set(all[evictionBatch:])
-		}
-	}
-
-	p.sentList.Refresh()
-	p.updateStatus()
-}
-
 // AddReceived adds a received message to the list (thread-safe via bindings).
 func (p *BidiStreamPanel) AddReceived(json string) {
 	p.receivedMessages.Append(json)

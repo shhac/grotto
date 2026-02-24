@@ -6,7 +6,6 @@ import "time"
 type Connection struct {
 	Name    string        `json:"Name,omitempty"` // Optional display name for connection profiles
 	Address string        `json:"Address"`
-	UseTLS  bool          `json:"UseTLS"`
 	Timeout time.Duration `json:"Timeout"`
 
 	// TLS configuration
