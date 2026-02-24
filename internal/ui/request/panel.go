@@ -224,6 +224,9 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 	if methodName == "" {
 		p.methodLabel.SetText("No method selected")
 		p.currentDesc = nil
+		if p.formBuilder != nil {
+			p.formBuilder.Destroy()
+		}
 		p.formBuilder = nil
 		p.synchronizer.SetFormBuilder(nil)
 		p.formContainer.Objects = []fyne.CanvasObject{container.NewCenter(p.formPlaceholder)}
@@ -234,6 +237,9 @@ func (p *RequestPanel) SetMethod(methodName string, inputDesc protoreflect.Messa
 
 		// Build form for this method
 		if inputDesc != nil {
+			if p.formBuilder != nil {
+				p.formBuilder.Destroy()
+			}
 			p.formBuilder = form.NewFormBuilder(inputDesc)
 			p.synchronizer.SetFormBuilder(p.formBuilder)
 			formUI := p.formBuilder.Build()

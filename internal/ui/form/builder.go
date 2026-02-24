@@ -36,6 +36,27 @@ func NewFormBuilder(md protoreflect.MessageDescriptor) *FormBuilder {
 	}
 }
 
+// Destroy breaks reference cycles to help GC collect the widget tree.
+// Call this before discarding a FormBuilder to release nested builders,
+// closures, and widget references that Fyne's canvas may otherwise retain.
+func (b *FormBuilder) Destroy() {
+	// Recursively destroy nested builders
+	for _, nfw := range b.nestedFields {
+		if builder := nfw.GetBuilder(); builder != nil {
+			builder.Destroy()
+		}
+	}
+
+	// Nil out all maps to break closure reference chains
+	b.fields = nil
+	b.repeatedFields = nil
+	b.mapFields = nil
+	b.nestedFields = nil
+	b.oneofFields = nil
+	b.optionalFields = nil
+	b.container = nil
+}
+
 // Build creates the form UI for the message descriptor
 func (b *FormBuilder) Build() fyne.CanvasObject {
 	items := make([]fyne.CanvasObject, 0)
