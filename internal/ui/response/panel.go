@@ -1,6 +1,9 @@
 package response
 
 import (
+	"bytes"
+	"encoding/json"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -17,17 +20,18 @@ const maxDisplayBytes = 1_000_000 // 1 MB — cap response display to prevent se
 type ResponsePanel struct {
 	widget.BaseWidget
 
-	window        fyne.Window
-	state         *model.ResponseState
-	richText      *widget.RichText
-	placeholder   *widget.Label
-	jsonScroll    *fyne.Container // stack of richText + placeholder
-	errorLabel    *widget.Label
-	durationLabel *widget.Label
-	sizeLabel     *widget.Label
-	loadingBar    *widget.ProgressBarInfinite
-	copyBtn       *widget.Button
-	saveBtn       *widget.Button
+	window         fyne.Window
+	state          *model.ResponseState
+	richText       *widget.RichText
+	placeholder    *widget.Label
+	jsonScroll     *fyne.Container // stack of richText + placeholder
+	errorLabel     *widget.Label
+	durationLabel  *widget.Label
+	sizeLabel      *widget.Label
+	loadingBar     *widget.ProgressBarInfinite
+	copyBtn        *widget.Button
+	copyCompactBtn *widget.Button
+	saveBtn        *widget.Button
 
 	// Select mode: toggle between colored RichText and selectable Entry
 	selectMode   bool
@@ -95,6 +99,22 @@ func (p *ResponsePanel) initializeComponents() {
 		}
 	})
 	p.copyBtn.Hide()
+
+	// Copy compact JSON button (hidden until there's a response)
+	p.copyCompactBtn = widget.NewButton("{}", func() {
+		text, _ := p.state.TextData.Get()
+		if text == "" {
+			return
+		}
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, []byte(text)); err == nil {
+			p.window.Clipboard().SetContent(buf.String())
+		} else {
+			// If not valid JSON, copy as-is
+			p.window.Clipboard().SetContent(text)
+		}
+	})
+	p.copyCompactBtn.Hide()
 
 	// Save to file button (hidden until there's a response)
 	p.saveBtn = widget.NewButtonWithIcon("", theme.DocumentSaveIcon(), func() {
@@ -181,7 +201,7 @@ func (p *ResponsePanel) initializeComponents() {
 		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
-			container.NewBorder(nil, nil, container.NewHBox(p.durationLabel, p.sizeLabel), container.NewHBox(p.selectToggle, p.copyBtn, p.saveBtn)),
+			container.NewBorder(nil, nil, container.NewHBox(p.durationLabel, p.sizeLabel), container.NewHBox(p.selectToggle, p.copyBtn, p.copyCompactBtn, p.saveBtn)),
 		),
 		nil,
 		nil,
@@ -233,6 +253,7 @@ func (p *ResponsePanel) setupBindings() {
 			p.richText.Refresh()
 			p.placeholder.Show()
 			p.copyBtn.Hide()
+			p.copyCompactBtn.Hide()
 			p.saveBtn.Hide()
 			p.selectToggle.Hide()
 			// Exit select mode when response is cleared
@@ -245,6 +266,7 @@ func (p *ResponsePanel) setupBindings() {
 		} else {
 			p.placeholder.Hide()
 			p.copyBtn.Show()
+			p.copyCompactBtn.Show()
 			p.saveBtn.Show()
 			p.selectToggle.Show()
 			displayText := text
