@@ -504,13 +504,27 @@ func newFormEntry() *widget.Entry {
 	return e
 }
 
-// formatFieldLabel converts snake_case field names to Title Case labels
+// knownAcronyms is the set of words that should be fully uppercased in labels.
+var knownAcronyms = map[string]bool{
+	"id": true, "url": true, "uri": true,
+	"api": true, "http": true, "uuid": true,
+	"ip": true, "tcp": true, "udp": true,
+	"rpc": true, "grpc": true, "tls": true,
+	"ssl": true, "dns": true, "cpu": true,
+}
+
+// formatFieldLabel converts snake_case field names to Title Case labels,
+// uppercasing known acronyms (e.g. "user_id" → "User ID").
 func formatFieldLabel(fieldName string) string {
 	// Split on underscores
 	parts := strings.Split(fieldName, "_")
 	for i, part := range parts {
 		if len(part) > 0 {
-			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+			if knownAcronyms[strings.ToLower(part)] {
+				parts[i] = strings.ToUpper(part)
+			} else {
+				parts[i] = strings.ToUpper(part[:1]) + part[1:]
+			}
 		}
 	}
 	return strings.Join(parts, " ")

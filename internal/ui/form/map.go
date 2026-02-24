@@ -22,6 +22,7 @@ type MapFieldWidget struct {
 	items     []fyne.CanvasObject // List of key-value pair widgets
 	container *fyne.Container
 	listBox   *fyne.Container
+	headerRow fyne.CanvasObject
 	addButton *widget.Button
 
 	onAdd    func()
@@ -40,8 +41,17 @@ func NewMapFieldWidget(name string, fd protoreflect.FieldDescriptor) *MapFieldWi
 	m.keyDesc = fd.MapKey()
 	m.valueDesc = fd.MapValue()
 
-	// Create list container
-	m.listBox = container.NewVBox()
+	// Create header row with "Key" / "Value" column labels
+	keyLabel := widget.NewLabel("Key")
+	keyLabel.TextStyle.Bold = true
+	valLabel := widget.NewLabel("Value")
+	valLabel.TextStyle.Bold = true
+	headerGrid := container.NewGridWithColumns(2, keyLabel, valLabel)
+	// Pad right side to match the space occupied by the remove button in data rows
+	m.headerRow = container.NewBorder(nil, nil, nil, layout.NewSpacer(), headerGrid)
+
+	// Create list container with header
+	m.listBox = container.NewVBox(m.headerRow)
 
 	// Create add button
 	m.addButton = widget.NewButton("+ Add Entry", func() {
@@ -118,9 +128,8 @@ func (m *MapFieldWidget) RemoveEntry(index int) {
 	// Remove from items slice
 	m.items = append(m.items[:index], m.items[index+1:]...)
 
-	// Rebuild list box
-	m.listBox.Objects = m.items
-	m.listBox.Refresh()
+	// Rebuild list box (header + data rows)
+	m.rebuildListBox()
 }
 
 // GetValue returns a map of key-value pairs
@@ -157,8 +166,7 @@ func (m *MapFieldWidget) GetValue() interface{} {
 func (m *MapFieldWidget) SetValue(v interface{}) {
 	// Clear existing items
 	m.items = make([]fyne.CanvasObject, 0)
-	m.listBox.Objects = nil
-	m.listBox.Refresh()
+	m.rebuildListBox()
 
 	// Populate from map
 	if mapVal, ok := v.(map[string]interface{}); ok {
@@ -407,6 +415,14 @@ func (m *MapFieldWidget) GetEntryCount() int {
 // Clear removes all entries from the map
 func (m *MapFieldWidget) Clear() {
 	m.items = make([]fyne.CanvasObject, 0)
-	m.listBox.Objects = nil
+	m.rebuildListBox()
+}
+
+// rebuildListBox reconstructs the listBox with the header row followed by data rows.
+func (m *MapFieldWidget) rebuildListBox() {
+	objs := make([]fyne.CanvasObject, 0, 1+len(m.items))
+	objs = append(objs, m.headerRow)
+	objs = append(objs, m.items...)
+	m.listBox.Objects = objs
 	m.listBox.Refresh()
 }
