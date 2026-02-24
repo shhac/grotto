@@ -80,7 +80,7 @@ func (w *StreamingMessagesWidget) initializeComponents() {
 	// Auto-scroll toggle
 	w.autoScrollCheck = widget.NewCheck("Auto-scroll", func(checked bool) {
 		w.autoScroll = checked
-		if checked {
+		if checked && w.messageList != nil {
 			w.messageList.ScrollToBottom()
 		}
 	})

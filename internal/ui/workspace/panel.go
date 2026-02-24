@@ -121,7 +121,7 @@ func (p *WorkspacePanel) initializeComponents() {
 		container.NewVBox(p.nameEntry, buttonRow, actionRow), // bottom
 		nil, // left
 		nil, // right
-		container.NewStack(container.NewScroll(p.listWidget), container.NewCenter(p.placeholder)),
+		container.NewStack(container.NewScroll(p.listWidget), p.placeholder),
 	)
 }
 

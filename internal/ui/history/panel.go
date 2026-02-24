@@ -234,7 +234,7 @@ func (p *HistoryPanel) buildUI() {
 		nil,    // bottom
 		nil,    // left
 		nil,    // right
-		container.NewStack(p.listWidget, container.NewCenter(p.placeholder)),
+		container.NewStack(p.listWidget, p.placeholder),
 	)
 }
 
@@ -305,10 +305,12 @@ func (p *HistoryPanel) applyFilter() {
 			p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(p.allEntries)))
 		}
 
-		if len(p.allEntries) == 0 {
-			p.placeholder.Show()
-		} else {
-			p.placeholder.Hide()
+		if p.placeholder != nil {
+			if len(p.allEntries) == 0 {
+				p.placeholder.Show()
+			} else {
+				p.placeholder.Hide()
+			}
 		}
 	})
 }
