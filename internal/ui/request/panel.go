@@ -50,7 +50,6 @@ type RequestPanel struct {
 	// Streaming mode
 	streamingInput *StreamingInputWidget // Client streaming input widget
 	isStreaming    bool                  // Whether current method is client streaming
-	mainContainer  *fyne.Container       // Container that switches between normal/streaming
 
 	// Metadata
 	metadataKeys binding.StringList // Keys for metadata
@@ -66,6 +65,9 @@ type RequestPanel struct {
 	metadataTab      *container.TabItem
 	bodyTabContent   *fyne.Container
 	metadataContent  *fyne.Container
+
+	// Full layout container returned by CreateRenderer
+	content *fyne.Container
 
 	logger *slog.Logger
 
@@ -173,8 +175,57 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 		p.handleStreamFinish()
 	})
 
+	p.initializeComponents()
 	p.ExtendBaseWidget(p)
 	return p
+}
+
+// initializeComponents creates layout containers once, following the same
+// pattern as ResponsePanel and BidiStreamPanel. This avoids recreating
+// widgets inside CreateRenderer, which Fyne may call more than once.
+func (p *RequestPanel) initializeComponents() {
+	// Metadata section UI
+	addMetadataBtn := widget.NewButton("+ Add Header", func() {
+		p.addMetadata()
+	})
+
+	metadataEntry := container.NewBorder(
+		nil, nil,
+		nil, addMetadataBtn,
+		container.NewGridWithColumns(2,
+			p.keyEntry,
+			p.valEntry,
+		),
+	)
+
+	p.metadataContent = container.NewBorder(
+		nil,
+		metadataEntry,
+		nil, nil,
+		p.metadataList,
+	)
+
+	// Body tab content: swaps between modeTabs (normal) and streamingInput
+	p.bodyTabContent = container.NewMax(p.modeTabs)
+
+	// Single set of top-level tabs — no more shared TabItem across two AppTabs
+	p.bodyTab = container.NewTabItem("Request Body", p.bodyTabContent)
+	p.metadataTab = container.NewTabItem("Request Metadata", p.metadataContent)
+	p.topLevelTabs = container.NewAppTabs(p.bodyTab, p.metadataTab)
+
+	// Header row: method label on left, send button on right
+	headerRow := container.NewBorder(nil, nil, nil, p.sendBtn, p.methodLabel)
+
+	// Full layout
+	p.content = container.NewBorder(
+		container.NewVBox(
+			headerRow,
+			widget.NewSeparator(),
+		),
+		nil,
+		nil, nil,
+		p.topLevelTabs,
+	)
 }
 
 // SetSendEnabled enables or disables the Send button
@@ -210,13 +261,14 @@ func (p *RequestPanel) StreamingInput() *StreamingInputWidget {
 func (p *RequestPanel) SetClientStreaming(streaming bool) {
 	p.isStreaming = streaming
 	if streaming {
-		// Clear the streaming widget for new stream
 		p.streamingInput.Clear()
+		p.bodyTabContent.Objects = []fyne.CanvasObject{p.streamingInput}
 		p.sendBtn.Hide()
 	} else {
+		p.bodyTabContent.Objects = []fyne.CanvasObject{p.modeTabs}
 		p.sendBtn.Show()
 	}
-	p.Refresh()
+	p.bodyTabContent.Refresh()
 }
 
 // SetMethod updates the panel for a selected method
@@ -383,73 +435,7 @@ func (p *RequestPanel) FocusEditor() {
 	}
 }
 
-// CreateRenderer returns the widget renderer
+// CreateRenderer returns the widget renderer.
 func (p *RequestPanel) CreateRenderer() fyne.WidgetRenderer {
-	// Metadata section UI
-	addMetadataBtn := widget.NewButton("+ Add Header", func() {
-		p.addMetadata()
-	})
-
-	metadataEntry := container.NewBorder(
-		nil, nil,
-		nil, addMetadataBtn,
-		container.NewGridWithColumns(2,
-			p.keyEntry,
-			p.valEntry,
-		),
-	)
-
-	p.metadataContent = container.NewBorder(
-		nil,
-		metadataEntry,
-		nil, nil,
-		p.metadataList,
-	)
-
-	// Request body tab content (contains the existing Text/Form mode tabs)
-	p.bodyTabContent = container.NewMax(p.modeTabs)
-
-	// Create top-level tabs
-	p.bodyTab = container.NewTabItem("Request Body", p.bodyTabContent)
-	p.metadataTab = container.NewTabItem("Request Metadata", p.metadataContent)
-	p.topLevelTabs = container.NewAppTabs(p.bodyTab, p.metadataTab)
-
-	// Normal layout (unary/server streaming) - now uses top-level tabs
-	normalLayout := p.topLevelTabs
-
-	// Streaming layout (client streaming) - also uses top-level tabs
-	// We'll switch the body tab content to show streaming input
-	streamingBodyContent := container.NewMax(p.streamingInput)
-	streamingBodyTab := container.NewTabItem("Request Body", streamingBodyContent)
-	streamingTabs := container.NewAppTabs(streamingBodyTab, p.metadataTab)
-
-	// Main container that switches between normal and streaming
-	p.mainContainer = container.NewMax()
-	if p.isStreaming {
-		p.mainContainer.Objects = []fyne.CanvasObject{streamingTabs}
-	} else {
-		p.mainContainer.Objects = []fyne.CanvasObject{normalLayout}
-	}
-
-	// Header row: method label on left, send button on right
-	// Hide send button in streaming mode (streaming widget has its own controls)
-	if p.isStreaming {
-		p.sendBtn.Hide()
-	} else {
-		p.sendBtn.Show()
-	}
-	headerRow := container.NewBorder(nil, nil, nil, p.sendBtn, p.methodLabel)
-
-	// Full layout
-	content := container.NewBorder(
-		container.NewVBox(
-			headerRow,
-			widget.NewSeparator(),
-		),
-		nil,
-		nil, nil,
-		p.mainContainer,
-	)
-
-	return widget.NewSimpleRenderer(content)
+	return widget.NewSimpleRenderer(p.content)
 }
