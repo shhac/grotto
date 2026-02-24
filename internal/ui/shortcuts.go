@@ -117,6 +117,15 @@ func (w *MainWindow) setupKeyboardShortcuts() {
 		w.toggleConnection()
 	})
 
+	// Cmd+,: Open preferences
+	canvas.AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyComma,
+		Modifier: fyne.KeyModifierSuper,
+	}, func(shortcut fyne.Shortcut) {
+		w.logger.Debug("keyboard shortcut: open preferences")
+		w.showPreferences()
+	})
+
 	// Escape: Cancel current operation (for streaming)
 	canvas.SetOnTypedKey(func(key *fyne.KeyEvent) {
 		if key.Name == fyne.KeyEscape {

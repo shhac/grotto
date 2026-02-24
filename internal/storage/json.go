@@ -19,7 +19,52 @@ const (
 	maxHistory     = 100
 	filePermission = 0644
 	dirPermission  = 0755
+
+	// currentSchemaVersion is the current schema version for persisted JSON files.
+	// Bump this when making breaking changes to on-disk formats.
+	currentSchemaVersion = 1
 )
+
+// versionedFile wraps persisted data with a schema version for future migration.
+type versionedFile struct {
+	Version int             `json:"version"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// wrapVersioned wraps data in a versioned envelope for writing.
+func wrapVersioned(data []byte) ([]byte, error) {
+	envelope := versionedFile{
+		Version: currentSchemaVersion,
+		Data:    json.RawMessage(data),
+	}
+	return json.MarshalIndent(envelope, "", "  ")
+}
+
+// unwrapVersioned reads a versioned envelope, returning the version and raw data.
+// If the file has no version field (pre-versioning), it returns version 0 and the original data.
+func unwrapVersioned(fileData []byte) (int, []byte, error) {
+	// Try to parse as versioned envelope
+	var envelope versionedFile
+	if err := json.Unmarshal(fileData, &envelope); err != nil {
+		// Not valid JSON at all
+		return 0, nil, err
+	}
+
+	// If Version is 0 and Data is nil/null, this is a pre-versioning file —
+	// the raw fileData IS the data (not wrapped in an envelope).
+	if envelope.Version == 0 && len(envelope.Data) == 0 {
+		return 0, fileData, nil
+	}
+
+	// Version 0 files could also be valid JSON objects/arrays that happen to
+	// unmarshal into the envelope struct with Version=0 but Data=null.
+	// Detect this: if "version" key is absent, treat as pre-versioning.
+	if envelope.Version == 0 {
+		return 0, fileData, nil
+	}
+
+	return envelope.Version, []byte(envelope.Data), nil
+}
 
 // JSONRepository implements Repository using JSON files
 type JSONRepository struct {
@@ -53,7 +98,12 @@ func (r *JSONRepository) SaveWorkspace(workspace domain.Workspace) error {
 		return fmt.Errorf("marshal workspace: %w", err)
 	}
 
-	if err := atomicWriteFile(path, data, filePermission); err != nil {
+	wrapped, err := wrapVersioned(data)
+	if err != nil {
+		return fmt.Errorf("wrap workspace version: %w", err)
+	}
+
+	if err := atomicWriteFile(path, wrapped, filePermission); err != nil {
 		return fmt.Errorf("write workspace file: %w", err)
 	}
 
@@ -73,12 +123,17 @@ func (r *JSONRepository) LoadWorkspace(name string) (*domain.Workspace, error) {
 	if err := r.verifyPathInWorkspacesDir(path); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	fileData, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("workspace %q not found", name)
 		}
 		return nil, fmt.Errorf("read workspace file: %w", err)
+	}
+
+	_, data, err := unwrapVersioned(fileData)
+	if err != nil {
+		return nil, fmt.Errorf("unwrap workspace version: %w", err)
 	}
 
 	var workspace domain.Workspace
@@ -303,13 +358,18 @@ func (r *JSONRepository) recentPath() string {
 
 func (r *JSONRepository) loadRecentList() ([]domain.Connection, error) {
 	path := r.recentPath()
-	data, err := os.ReadFile(path)
+	fileData, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File doesn't exist yet, return empty list
 			return []domain.Connection{}, nil
 		}
 		return nil, fmt.Errorf("read recent file: %w", err)
+	}
+
+	_, data, err := unwrapVersioned(fileData)
+	if err != nil {
+		return nil, fmt.Errorf("unwrap recent version: %w", err)
 	}
 
 	var recent []domain.Connection
@@ -326,8 +386,13 @@ func (r *JSONRepository) saveRecentList(recent []domain.Connection) error {
 		return fmt.Errorf("marshal recent connections: %w", err)
 	}
 
+	wrapped, err := wrapVersioned(data)
+	if err != nil {
+		return fmt.Errorf("wrap recent version: %w", err)
+	}
+
 	path := r.recentPath()
-	if err := atomicWriteFile(path, data, filePermission); err != nil {
+	if err := atomicWriteFile(path, wrapped, filePermission); err != nil {
 		return fmt.Errorf("write recent file: %w", err)
 	}
 
@@ -413,13 +478,18 @@ func (r *JSONRepository) historyPath() string {
 // loadHistoryList loads the history list from disk
 func (r *JSONRepository) loadHistoryList() ([]domain.HistoryEntry, error) {
 	path := r.historyPath()
-	data, err := os.ReadFile(path)
+	fileData, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File doesn't exist yet, return empty list
 			return []domain.HistoryEntry{}, nil
 		}
 		return nil, fmt.Errorf("read history file: %w", err)
+	}
+
+	_, data, err := unwrapVersioned(fileData)
+	if err != nil {
+		return nil, fmt.Errorf("unwrap history version: %w", err)
 	}
 
 	var history []domain.HistoryEntry
@@ -437,8 +507,13 @@ func (r *JSONRepository) saveHistoryList(history []domain.HistoryEntry) error {
 		return fmt.Errorf("marshal history: %w", err)
 	}
 
+	wrapped, err := wrapVersioned(data)
+	if err != nil {
+		return fmt.Errorf("wrap history version: %w", err)
+	}
+
 	path := r.historyPath()
-	if err := atomicWriteFile(path, data, filePermission); err != nil {
+	if err := atomicWriteFile(path, wrapped, filePermission); err != nil {
 		return fmt.Errorf("write history file: %w", err)
 	}
 

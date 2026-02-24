@@ -8,6 +8,13 @@ import (
 	"runtime"
 )
 
+const (
+	// maxLogSize is the maximum log file size before rotation (5 MB).
+	maxLogSize = 5 * 1024 * 1024
+	// maxLogBackups is the number of rotated log files to keep.
+	maxLogBackups = 3
+)
+
 // InitLogger initializes a structured logger with platform-specific log file paths.
 // The logger writes JSON-formatted logs to a file in the appropriate platform location:
 //   - macOS:   ~/Library/Logs/grotto/grotto.log
@@ -28,6 +35,11 @@ func InitLogger(appName string, debug bool) (*slog.Logger, error) {
 		return nil, fmt.Errorf("failed to create log directory %s: %w", logDir, err)
 	}
 
+	// Rotate log file if it exceeds the size limit
+	if err := rotateIfNeeded(logPath); err != nil {
+		return nil, fmt.Errorf("failed to rotate log file: %w", err)
+	}
+
 	// Open log file for appending
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -46,6 +58,40 @@ func InitLogger(appName string, debug bool) (*slog.Logger, error) {
 	})
 
 	return slog.New(handler), nil
+}
+
+// rotateIfNeeded checks the log file size and rotates if it exceeds maxLogSize.
+// Rotation renames current.log → current.log.1, .1 → .2, etc., keeping maxLogBackups.
+func rotateIfNeeded(logPath string) error {
+	info, err := os.Stat(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Nothing to rotate
+		}
+		return err
+	}
+
+	if info.Size() < maxLogSize {
+		return nil
+	}
+
+	// Shift existing backups: .3 is deleted, .2→.3, .1→.2
+	for i := maxLogBackups; i >= 1; i-- {
+		src := fmt.Sprintf("%s.%d", logPath, i)
+		dst := fmt.Sprintf("%s.%d", logPath, i+1)
+		if i == maxLogBackups {
+			os.Remove(src) // Delete oldest
+		} else {
+			os.Rename(src, dst) // Shift
+		}
+	}
+
+	// Rotate current log to .1
+	if err := os.Rename(logPath, logPath+".1"); err != nil {
+		return fmt.Errorf("rotate log file: %w", err)
+	}
+
+	return nil
 }
 
 // getLogFilePath returns the platform-specific log file path.

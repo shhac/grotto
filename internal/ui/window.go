@@ -27,6 +27,7 @@ import (
 	"github.com/shhac/grotto/internal/ui/history"
 	"github.com/shhac/grotto/internal/ui/request"
 	"github.com/shhac/grotto/internal/ui/response"
+	"github.com/shhac/grotto/internal/ui/settings"
 	"github.com/shhac/grotto/internal/ui/workspace"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -44,12 +45,22 @@ type AppController interface {
 	Storage() storage.Repository
 }
 
+// Preference keys for window state persistence
+const (
+	prefWindowWidth  = "windowWidth"
+	prefWindowHeight = "windowHeight"
+	prefSplitMain    = "splitMain"
+	prefSplitBrowser = "splitBrowser"
+	prefSplitContent = "splitContent"
+)
+
 // MainWindow manages the main application window and its layout.
 type MainWindow struct {
-	window fyne.Window
-	state  *model.ApplicationState
-	logger *slog.Logger
-	app    AppController
+	window  fyne.Window
+	fyneApp fyne.App
+	state   *model.ApplicationState
+	logger  *slog.Logger
+	app     AppController
 
 	// Connection state for UI
 	connState *model.ConnectionUIState
@@ -77,6 +88,8 @@ type MainWindow struct {
 	// Layout state
 	inBidiMode   bool             // avoid unnecessary rebuilds
 	contentSplit *container.Split // request/response vertical split (stored for offset changes)
+	mainSplit    *container.Split // left/right horizontal split (stored for state persistence)
+	browserSplit *container.Split // browser/tabs vertical split (stored for state persistence)
 
 	// Per-method request cache: "service/method" → last JSON text
 	methodRequestCache map[string]string
@@ -95,6 +108,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 
 	mw := &MainWindow{
 		window:             window,
+		fyneApp:            fyneApp,
 		state:              app.State(),
 		logger:             app.Logger(),
 		app:                app,
@@ -125,16 +139,48 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 	// Set up keyboard shortcuts
 	mw.setupKeyboardShortcuts()
 
-	// Cancel all streams on window close
+	// Cancel all streams on window close and persist window state
 	window.SetCloseIntercept(func() {
+		mw.saveWindowState()
 		mw.cancelAllStreams()
 		window.Close()
 	})
 
-	// Set default window size
-	window.Resize(fyne.NewSize(1200, 800))
+	// Restore saved window size or use defaults
+	mw.restoreWindowState()
 
 	return mw
+}
+
+// saveWindowState persists window size and splitter offsets to Fyne Preferences.
+func (w *MainWindow) saveWindowState() {
+	prefs := w.fyneApp.Preferences()
+	size := w.window.Canvas().Size()
+	prefs.SetFloat(prefWindowWidth, float64(size.Width))
+	prefs.SetFloat(prefWindowHeight, float64(size.Height))
+	if w.mainSplit != nil {
+		prefs.SetFloat(prefSplitMain, w.mainSplit.Offset)
+	}
+	if w.browserSplit != nil {
+		prefs.SetFloat(prefSplitBrowser, w.browserSplit.Offset)
+	}
+	if w.contentSplit != nil {
+		prefs.SetFloat(prefSplitContent, w.contentSplit.Offset)
+	}
+}
+
+// restoreWindowState restores window size from Fyne Preferences or uses defaults.
+func (w *MainWindow) restoreWindowState() {
+	prefs := w.fyneApp.Preferences()
+	width := float32(prefs.FloatWithFallback(prefWindowWidth, 1200))
+	height := float32(prefs.FloatWithFallback(prefWindowHeight, 800))
+	w.window.Resize(fyne.NewSize(width, height))
+}
+
+// getRequestTimeout returns the configured request timeout from preferences.
+func (w *MainWindow) getRequestTimeout() time.Duration {
+	seconds := w.fyneApp.Preferences().FloatWithFallback(settings.PrefRequestTimeout, 30)
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // wireCallbacks sets up all the event handlers and connects components
@@ -551,7 +597,7 @@ func (w *MainWindow) handleSendRequest(jsonStr string, metadataMap map[string]st
 // handleUnaryRequest handles unary RPC invocations
 func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]string, methodDesc protoreflect.MethodDescriptor) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), w.getRequestTimeout())
 		defer cancel()
 		w.streamMu.Lock()
 		w.unaryCancel = cancel
@@ -807,15 +853,16 @@ func (w *MainWindow) buildLeftPanel() *fyne.Container {
 		container.NewTabItem("Workspaces", w.workspacePanel),
 		container.NewTabItem("History", w.historyPanel),
 	)
-	browserWithTabs := container.NewVSplit(
+	w.browserSplit = container.NewVSplit(
 		w.serviceBrowser,
 		leftTabs,
 	)
-	browserWithTabs.SetOffset(0.7)
+	savedBrowser := w.fyneApp.Preferences().FloatWithFallback(prefSplitBrowser, 0.7)
+	w.browserSplit.SetOffset(savedBrowser)
 	return container.NewBorder(
 		nil,
 		nil, nil, nil,
-		browserWithTabs,
+		w.browserSplit,
 	)
 }
 
@@ -834,7 +881,8 @@ func (w *MainWindow) SetContent() {
 		w.requestPanel,  // top (gets most space initially)
 		w.responsePanel, // bottom (minimized until first response)
 	)
-	w.contentSplit.SetOffset(0.75) // 75% request, 25% response
+	savedContent := w.fyneApp.Preferences().FloatWithFallback(prefSplitContent, 0.75)
+	w.contentSplit.SetOffset(savedContent) // default: 75% request, 25% response
 	rightPanel := container.NewBorder(
 		nil,       // top
 		bottomBar, // bottom (status bar + theme selector)
@@ -844,16 +892,17 @@ func (w *MainWindow) SetContent() {
 	)
 
 	// Main layout: horizontal split with browser on left, panels on right
-	mainSplit := container.NewHSplit(
+	w.mainSplit = container.NewHSplit(
 		leftPanel,  // left side (browser + workspaces)
 		rightPanel, // right side (request/response/status)
 	)
 
-	// Set the initial split position (30% for browser, 70% for panels)
-	mainSplit.SetOffset(0.3)
+	// Restore saved split position or use default (30% for browser, 70% for panels)
+	savedMain := w.fyneApp.Preferences().FloatWithFallback(prefSplitMain, 0.3)
+	w.mainSplit.SetOffset(savedMain)
 
 	// Connection bar spans full window width above the split
-	w.window.SetContent(container.NewBorder(w.connectionBar, nil, nil, nil, mainSplit))
+	w.window.SetContent(container.NewBorder(w.connectionBar, nil, nil, nil, w.mainSplit))
 }
 
 // Window returns the underlying Fyne window.
@@ -1732,6 +1781,14 @@ func (w *MainWindow) setupMainMenu() {
 		Modifier: fyne.KeyModifierSuper | fyne.KeyModifierShift,
 	}
 
+	preferencesItem := fyne.NewMenuItem("Preferences...", func() {
+		w.showPreferences()
+	})
+	preferencesItem.Shortcut = &desktop.CustomShortcut{
+		KeyName:  fyne.KeyComma,
+		Modifier: fyne.KeyModifierSuper,
+	}
+
 	fileMenu := fyne.NewMenu("File",
 		saveItem,
 		loadItem,
@@ -1741,6 +1798,8 @@ func (w *MainWindow) setupMainMenu() {
 		fyne.NewMenuItem("Clear History", func() {
 			w.handleClearHistory()
 		}),
+		fyne.NewMenuItemSeparator(),
+		preferencesItem,
 	)
 
 	// Edit menu - clear operations
@@ -1838,6 +1897,15 @@ func (w *MainWindow) setupMainMenu() {
 	)
 
 	w.window.SetMainMenu(mainMenu)
+}
+
+// showPreferences opens the unified Preferences dialog.
+func (w *MainWindow) showPreferences() {
+	settings.ShowPreferencesDialog(w.fyneApp, w.window, settings.PreferencesCallbacks{
+		OnThemeChange: func(mode string) {
+			ApplyTheme(w.fyneApp, mode)
+		},
+	})
 }
 
 // handleClearHistory shows a confirmation dialog and clears history if confirmed
