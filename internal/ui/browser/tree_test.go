@@ -528,6 +528,39 @@ func TestServiceBrowser_SortedAlphabetically(t *testing.T) {
 	}, methodUIDs)
 }
 
+func TestBuildDisplayNames_NoCollision(t *testing.T) {
+	index := map[string]domain.Service{
+		"com.example.api.UserService":    {Name: "UserService", FullName: "com.example.api.UserService"},
+		"com.example.api.ProductService": {Name: "ProductService", FullName: "com.example.api.ProductService"},
+	}
+	display := buildDisplayNames(index)
+	assert.Equal(t, "UserService", display["com.example.api.UserService"])
+	assert.Equal(t, "ProductService", display["com.example.api.ProductService"])
+}
+
+func TestBuildDisplayNames_WithCollision(t *testing.T) {
+	index := map[string]domain.Service{
+		"com.foo.UserService": {Name: "UserService", FullName: "com.foo.UserService"},
+		"com.bar.UserService": {Name: "UserService", FullName: "com.bar.UserService"},
+	}
+	display := buildDisplayNames(index)
+	assert.Equal(t, "foo.UserService", display["com.foo.UserService"])
+	assert.Equal(t, "bar.UserService", display["com.bar.UserService"])
+}
+
+func TestBuildDisplayNames_DeepCollision(t *testing.T) {
+	index := map[string]domain.Service{
+		"com.example.v1.UserService": {Name: "UserService", FullName: "com.example.v1.UserService"},
+		"com.example.v2.UserService": {Name: "UserService", FullName: "com.example.v2.UserService"},
+		"org.other.UserService":      {Name: "UserService", FullName: "org.other.UserService"},
+	}
+	display := buildDisplayNames(index)
+	// v1 and v2 share "example" so need one more segment
+	assert.Equal(t, "v1.UserService", display["com.example.v1.UserService"])
+	assert.Equal(t, "v2.UserService", display["com.example.v2.UserService"])
+	assert.Equal(t, "other.UserService", display["org.other.UserService"])
+}
+
 func TestServiceBrowser_OnServiceError(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

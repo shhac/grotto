@@ -154,19 +154,20 @@ func (b *ServiceBrowser) update(uid string, branch bool, obj fyne.CanvasObject) 
 	if branch {
 		service := b.findService(uid)
 
+		displayName := b.displayNames[uid]
+		if displayName == "" {
+			displayName = uid
+		}
+
 		if service != nil && service.Error != "" {
 			// Error service: show warning icon and indicator
 			icon.Resource = theme.WarningIcon()
 			icon.Refresh()
-			label.SetText(fmt.Sprintf("%s  ⚠", service.Name))
+			label.SetText(fmt.Sprintf("%s  ⚠", displayName))
 			label.TextStyle = fyne.TextStyle{Italic: true}
 			label.Importance = widget.WarningImportance
 		} else {
 			// Normal service: show short name with method count
-			displayName := uid
-			if service != nil {
-				displayName = service.Name
-			}
 			icon.Resource = theme.FolderIcon()
 			icon.Refresh()
 			methodCount := 0
@@ -291,6 +292,7 @@ func (b *ServiceBrowser) rebuildIndex() {
 	sort.Strings(uids)
 	b.serviceIndex = index
 	b.serviceUIDs = uids
+	b.displayNames = buildDisplayNames(index)
 
 	// Toggle between placeholder and tree based on service count
 	// (content may be nil during initial construction)
@@ -345,4 +347,48 @@ func (b *ServiceBrowser) findMethod(service domain.Service, methodName string) *
 		}
 	}
 	return nil
+}
+
+// buildDisplayNames computes short display names for services, disambiguating
+// collisions where multiple services share the same simple name.
+// For example, if both "com.foo.UserService" and "com.bar.UserService" exist,
+// they become "foo.UserService" and "bar.UserService" respectively.
+func buildDisplayNames(index map[string]domain.Service) map[string]string {
+	display := make(map[string]string, len(index))
+
+	// Group full names by their simple Name (last segment)
+	groups := make(map[string][]string) // simpleName → []fullName
+	for fullName, svc := range index {
+		groups[svc.Name] = append(groups[svc.Name], fullName)
+	}
+
+	for simpleName, fullNames := range groups {
+		if len(fullNames) == 1 {
+			// No collision — use the simple name
+			display[fullNames[0]] = simpleName
+			continue
+		}
+		// Collision — progressively add package segments until unique
+		for _, fullName := range fullNames {
+			segments := strings.Split(fullName, ".")
+			// Walk backwards from the service name, adding segments until unique
+			name := simpleName
+			for i := len(segments) - 2; i >= 0; i-- {
+				name = segments[i] + "." + name
+				unique := true
+				for _, other := range fullNames {
+					if other != fullName && strings.HasSuffix(other, "."+name) {
+						unique = false
+						break
+					}
+				}
+				if unique {
+					break
+				}
+			}
+			display[fullName] = name
+		}
+	}
+
+	return display
 }
