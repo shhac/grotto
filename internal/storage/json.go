@@ -17,8 +17,8 @@ const (
 	historyFile    = "history.json"
 	maxRecent      = 10
 	maxHistory     = 100
-	filePermission = 0644
-	dirPermission  = 0755
+	filePermission = 0600
+	dirPermission  = 0700
 
 	// currentSchemaVersion is the current schema version for persisted JSON files.
 	// Bump this when making breaking changes to on-disk formats.

@@ -688,6 +688,15 @@ func (w *MainWindow) handleUnaryRequest(jsonStr string, metadataMap map[string]s
 
 // handleServerStreamRequest handles server streaming RPC invocations
 func (w *MainWindow) handleServerStreamRequest(jsonStr string, metadataMap map[string]string, methodDesc protoreflect.MethodDescriptor) {
+	// Cancel any existing server stream before starting a new one
+	w.streamMu.Lock()
+	prevCancel := w.serverStreamCancel
+	w.serverStreamCancel = nil
+	w.streamMu.Unlock()
+	if prevCancel != nil {
+		prevCancel()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	w.streamMu.Lock()
 	w.serverStreamCancel = cancel
@@ -1146,13 +1155,7 @@ func (w *MainWindow) captureWorkspaceState() domain.Workspace {
 		selectedMethod, _ := w.state.SelectedMethod.Get()
 
 		// Get metadata from request panel
-		metadataList, _ := w.state.Request.Metadata.Get()
-		metadata := make(map[string]string)
-		for i := 0; i < len(metadataList); i += 2 {
-			if i+1 < len(metadataList) {
-				metadata[metadataList[i]] = metadataList[i+1]
-			}
-		}
+		metadata := w.requestPanel.GetMetadata()
 
 		workspace.CurrentRequest = &domain.Request{
 			Method:   selectedMethod,
@@ -1206,25 +1209,14 @@ func (w *MainWindow) applyWorkspaceState(workspace domain.Workspace) {
 			if workspace.CurrentRequest != nil {
 				fyne.Do(func() {
 					_ = w.state.Request.TextData.Set(workspace.CurrentRequest.Body)
-
-					metadataList := []string{}
-					for key, value := range workspace.CurrentRequest.Metadata {
-						metadataList = append(metadataList, key, value)
-					}
-					_ = w.state.Request.Metadata.Set(metadataList)
-
+					w.requestPanel.SetMetadata(workspace.CurrentRequest.Metadata)
 					w.requestPanel.SyncTextToForm()
 				})
 			}
 		} else if workspace.CurrentRequest != nil {
 			// No method to select, just restore request body
 			_ = w.state.Request.TextData.Set(workspace.CurrentRequest.Body)
-
-			metadataList := []string{}
-			for key, value := range workspace.CurrentRequest.Metadata {
-				metadataList = append(metadataList, key, value)
-			}
-			_ = w.state.Request.Metadata.Set(metadataList)
+			w.requestPanel.SetMetadata(workspace.CurrentRequest.Metadata)
 		}
 	}
 

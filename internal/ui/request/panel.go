@@ -422,7 +422,7 @@ func (p *RequestPanel) handleSend() {
 	}
 
 	// Build metadata map
-	metadata := p.getMetadata()
+	metadata := p.GetMetadata()
 
 	p.onSend(jsonText, metadata)
 }
@@ -440,7 +440,7 @@ func (p *RequestPanel) handleStreamSend(jsonText string) {
 	}
 
 	// Build metadata map
-	metadata := p.getMetadata()
+	metadata := p.GetMetadata()
 
 	p.onStreamSend(jsonText, metadata)
 }
@@ -452,13 +452,13 @@ func (p *RequestPanel) handleStreamFinish() {
 	}
 
 	// Build metadata map
-	metadata := p.getMetadata()
+	metadata := p.GetMetadata()
 
 	p.onStreamEnd(metadata)
 }
 
-// getMetadata builds the metadata map from the UI
-func (p *RequestPanel) getMetadata() map[string]string {
+// GetMetadata builds the metadata map from the UI
+func (p *RequestPanel) GetMetadata() map[string]string {
 	metadata := make(map[string]string)
 	length := p.metadataKeys.Length()
 	for i := 0; i < length; i++ {

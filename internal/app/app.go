@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"github.com/shhac/grotto/internal/grpc"
@@ -21,6 +22,7 @@ type App struct {
 	connManager      *grpc.ConnectionManager
 	storage          storage.Repository
 	state            *model.ApplicationState
+	mu               sync.RWMutex
 	reflectionClient *grpc.ReflectionClient
 	invoker          *grpc.Invoker
 }
@@ -108,17 +110,23 @@ func (a *App) FyneApp() fyne.App {
 
 // ReflectionClient returns the reflection client (may be nil if not connected)
 func (a *App) ReflectionClient() *grpc.ReflectionClient {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.reflectionClient
 }
 
 // Invoker returns the RPC invoker (may be nil if not connected)
 func (a *App) Invoker() *grpc.Invoker {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.invoker
 }
 
 // InitializeReflectionClient creates a new reflection client and invoker for the current connection.
 // This should be called after a successful connection is established.
 func (a *App) InitializeReflectionClient() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	conn := a.connManager.Conn()
 	if conn == nil {
 		return fmt.Errorf("no active connection")
@@ -139,6 +147,8 @@ func (a *App) InitializeReflectionClient() error {
 
 // CleanupReflectionClient closes and clears the reflection client and invoker
 func (a *App) CleanupReflectionClient() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.reflectionClient != nil {
 		a.reflectionClient.Close()
 		a.reflectionClient = nil

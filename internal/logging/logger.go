@@ -31,7 +31,7 @@ func InitLogger(appName string, debug bool) (*slog.Logger, error) {
 
 	// Create log directory if it doesn't exist
 	logDir := filepath.Dir(logPath)
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create log directory %s: %w", logDir, err)
 	}
 
@@ -41,7 +41,7 @@ func InitLogger(appName string, debug bool) (*slog.Logger, error) {
 	}
 
 	// Open log file for appending
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file %s: %w", logPath, err)
 	}

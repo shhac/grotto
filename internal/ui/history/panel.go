@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -31,6 +32,7 @@ type HistoryPanel struct {
 	statusLabel *widget.Label
 
 	// Filter state
+	mu           sync.Mutex
 	filterEntry  *widget.Entry
 	filterQuery  string
 	statusFilter string                // "" (all), "success", or "error"
@@ -243,15 +245,22 @@ func (p *HistoryPanel) Refresh() {
 		return
 	}
 
+	p.mu.Lock()
 	p.allEntries = entries
+	p.mu.Unlock()
 	p.applyFilter()
 	p.logger.Debug("history refreshed", slog.Int("count", len(entries)))
 }
 
 // applyFilter filters allEntries by text query and status, then updates the list
 func (p *HistoryPanel) applyFilter() {
+	p.mu.Lock()
+	entries := make([]domain.HistoryEntry, len(p.allEntries))
+	copy(entries, p.allEntries)
+	p.mu.Unlock()
+
 	var filtered []domain.HistoryEntry
-	for _, entry := range p.allEntries {
+	for _, entry := range entries {
 		// Status filter
 		if p.statusFilter != "" && entry.Status != p.statusFilter {
 			continue
