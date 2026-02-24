@@ -78,22 +78,12 @@ func (m *MapFieldWidget) AddEntry() {
 	// Create value widget
 	valueWidget := m.createValueWidget()
 
-	// Create row container first (before remove button callback)
-	row := container.NewBorder(
-		nil,
-		nil,
-		nil,
-		nil, // Will set remove button after
-		container.NewGridWithColumns(2,
-			keyWidget,
-			valueWidget,
-		),
-	)
+	// Create row container — use nil center initially so we can reference
+	// row in the remove button closure before finalizing the layout.
+	row := container.NewBorder(nil, nil, nil, nil)
 
 	// Create remove button with dynamic index lookup
-	// Instead of capturing the index at creation time, find the row's current index when clicked
 	removeBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		// Find the current index of this row
 		currentIndex := -1
 		for i, item := range m.items {
 			if item == row {
@@ -109,13 +99,10 @@ func (m *MapFieldWidget) AddEntry() {
 		}
 	})
 
-	// Update the row to include the remove button
-	row.Objects = []fyne.CanvasObject{
-		container.NewGridWithColumns(2, keyWidget, valueWidget),
-		removeBtn,
-	}
+	// Set the row layout with key-value grid and remove button
+	grid := container.NewGridWithColumns(2, keyWidget, valueWidget)
+	row.Objects = []fyne.CanvasObject{grid, removeBtn}
 	row.Layout = layout.NewBorderLayout(nil, nil, nil, removeBtn)
-	row.Refresh()
 
 	m.items = append(m.items, row)
 	m.listBox.Add(row)
