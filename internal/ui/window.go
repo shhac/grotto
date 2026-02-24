@@ -1167,6 +1167,24 @@ func (w *MainWindow) captureWorkspaceState() domain.Workspace {
 	workspace.SelectedService, _ = w.state.SelectedService.Get()
 	workspace.SelectedMethod, _ = w.state.SelectedMethod.Get()
 
+	// Snapshot the current method's request into the cache before saving
+	if workspace.SelectedService != "" && workspace.SelectedMethod != "" {
+		if currentJSON, _ := w.state.Request.TextData.Get(); currentJSON != "" {
+			w.methodRequestCache[workspace.SelectedService+"/"+workspace.SelectedMethod] = currentJSON
+		}
+	}
+
+	// Capture per-method request templates from cache
+	for method, jsonStr := range w.methodRequestCache {
+		workspace.Requests = append(workspace.Requests, domain.SavedRequest{
+			Name: method,
+			Request: domain.Request{
+				Method: method,
+				Body:   jsonStr,
+			},
+		})
+	}
+
 	return workspace
 }
 
@@ -1174,32 +1192,93 @@ func (w *MainWindow) captureWorkspaceState() domain.Workspace {
 func (w *MainWindow) applyWorkspaceState(workspace domain.Workspace) {
 	w.logger.Info("applying workspace state", slog.String("workspace", workspace.Name))
 
-	// Restore connection if saved
+	// Restore per-method request templates into cache
+	for _, saved := range workspace.Requests {
+		w.methodRequestCache[saved.Name] = saved.Request.Body
+	}
+
+	// afterConnect selects the saved service/method and restores request state.
+	afterConnect := func() {
+		if workspace.SelectedService != "" && workspace.SelectedMethod != "" {
+			fyne.Do(func() {
+				w.serviceBrowser.SelectMethod(workspace.SelectedService, workspace.SelectedMethod)
+			})
+
+			// Restore request body after SelectMethod (which clears TextData)
+			if workspace.CurrentRequest != nil {
+				fyne.Do(func() {
+					_ = w.state.Request.TextData.Set(workspace.CurrentRequest.Body)
+
+					metadataList := []string{}
+					for key, value := range workspace.CurrentRequest.Metadata {
+						metadataList = append(metadataList, key, value)
+					}
+					_ = w.state.Request.Metadata.Set(metadataList)
+
+					w.requestPanel.SyncTextToForm()
+				})
+			}
+		} else if workspace.CurrentRequest != nil {
+			// No method to select, just restore request body
+			_ = w.state.Request.TextData.Set(workspace.CurrentRequest.Body)
+
+			metadataList := []string{}
+			for key, value := range workspace.CurrentRequest.Metadata {
+				metadataList = append(metadataList, key, value)
+			}
+			_ = w.state.Request.Metadata.Set(metadataList)
+		}
+	}
+
+	// Auto-connect if workspace has a saved connection
 	if workspace.CurrentConnection != nil {
 		conn := workspace.CurrentConnection
 		w.connectionBar.SetAddress(conn.Address)
 		w.connectionBar.SetTLSSettings(conn.TLS)
-	}
 
-	// Restore request if saved
-	if workspace.CurrentRequest != nil {
-		req := workspace.CurrentRequest
-		_ = w.state.Request.TextData.Set(req.Body)
+		// Check if already connected to this server
+		currentServer, _ := w.state.CurrentServer.Get()
+		if currentServer == conn.Address {
+			// Already connected — just select method and restore state
+			afterConnect()
+		} else {
+			// Need to connect first
+			w.handleConnect(conn.Address, conn.TLS)
 
-		// Convert metadata map to string list for binding
-		metadataList := []string{}
-		for key, value := range req.Metadata {
-			metadataList = append(metadataList, key, value)
+			// Wait for connection then restore state
+			go func() {
+				done := make(chan struct{})
+				var listener binding.DataListener
+				listener = binding.NewDataListener(func() {
+					state, _ := w.connState.State.Get()
+					switch state {
+					case "connected":
+						w.connState.State.RemoveListener(listener)
+						close(done)
+					case "error":
+						w.connState.State.RemoveListener(listener)
+						close(done)
+					}
+				})
+				w.connState.State.AddListener(listener)
+
+				select {
+				case <-done:
+					state, _ := w.connState.State.Get()
+					if state == "connected" {
+						afterConnect()
+					} else {
+						w.logger.Error("connection failed while loading workspace")
+					}
+				case <-time.After(30 * time.Second):
+					w.connState.State.RemoveListener(listener)
+					w.logger.Error("timed out waiting for connection while loading workspace")
+				}
+			}()
 		}
-		_ = w.state.Request.Metadata.Set(metadataList)
-	}
-
-	// Restore selected service/method
-	if workspace.SelectedService != "" {
-		_ = w.state.SelectedService.Set(workspace.SelectedService)
-	}
-	if workspace.SelectedMethod != "" {
-		_ = w.state.SelectedMethod.Set(workspace.SelectedMethod)
+	} else {
+		// No connection to restore, just set any request state
+		afterConnect()
 	}
 
 	w.logger.Info("workspace state applied successfully")
