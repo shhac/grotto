@@ -4,6 +4,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/shhac/grotto/internal/model"
@@ -25,6 +27,7 @@ type ResponsePanel struct {
 	sizeLabel     *widget.Label
 	loadingBar    *widget.ProgressBarInfinite
 	copyBtn       *widget.Button
+	saveBtn       *widget.Button
 
 	// Select mode: toggle between colored RichText and selectable Entry
 	selectMode   bool
@@ -92,6 +95,12 @@ func (p *ResponsePanel) initializeComponents() {
 		}
 	})
 	p.copyBtn.Hide()
+
+	// Save to file button (hidden until there's a response)
+	p.saveBtn = widget.NewButtonWithIcon("", theme.DocumentSaveIcon(), func() {
+		p.exportResponseToFile()
+	})
+	p.saveBtn.Hide()
 
 	// Select mode: read-only Entry for text selection (full contrast, no edits)
 	p.selectEntry = NewReadOnlyMultiLineEntry()
@@ -172,7 +181,7 @@ func (p *ResponsePanel) initializeComponents() {
 		nil,
 		container.NewVBox(
 			widget.NewSeparator(),
-			container.NewBorder(nil, nil, container.NewHBox(p.durationLabel, p.sizeLabel), container.NewHBox(p.selectToggle, p.copyBtn)),
+			container.NewBorder(nil, nil, container.NewHBox(p.durationLabel, p.sizeLabel), container.NewHBox(p.selectToggle, p.copyBtn, p.saveBtn)),
 		),
 		nil,
 		nil,
@@ -224,6 +233,7 @@ func (p *ResponsePanel) setupBindings() {
 			p.richText.Refresh()
 			p.placeholder.Show()
 			p.copyBtn.Hide()
+			p.saveBtn.Hide()
 			p.selectToggle.Hide()
 			// Exit select mode when response is cleared
 			if p.selectMode {
@@ -235,6 +245,7 @@ func (p *ResponsePanel) setupBindings() {
 		} else {
 			p.placeholder.Hide()
 			p.copyBtn.Show()
+			p.saveBtn.Show()
 			p.selectToggle.Show()
 			displayText := text
 			if len(displayText) > maxDisplayBytes {
@@ -345,6 +356,25 @@ func (p *ResponsePanel) toggleSelectMode() {
 		p.selectToggle.SetIcon(theme.DocumentIcon())
 	}
 	p.displayStack.Refresh()
+}
+
+// exportResponseToFile saves the response text to a user-chosen file.
+func (p *ResponsePanel) exportResponseToFile() {
+	text, _ := p.state.TextData.Get()
+	if text == "" {
+		return
+	}
+
+	d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		if err != nil || writer == nil {
+			return
+		}
+		defer writer.Close()
+		_, _ = writer.Write([]byte(text))
+	}, p.window)
+	d.SetFilter(storage.NewExtensionFileFilter([]string{".json", ".txt"}))
+	d.SetFileName("response.json")
+	d.Show()
 }
 
 // StreamingWidget returns the streaming widget for external control.
