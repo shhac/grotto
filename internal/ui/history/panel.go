@@ -33,7 +33,7 @@ type HistoryPanel struct {
 	// Filter state
 	filterEntry  *widget.Entry
 	filterQuery  string
-	statusFilter string     // "" (all), "success", or "error"
+	statusFilter string                // "" (all), "success", or "error"
 	allEntries   []domain.HistoryEntry // full unfiltered entries from storage
 
 	// Callbacks
@@ -282,7 +282,7 @@ func (p *HistoryPanel) applyFilter() {
 
 	fyne.Do(func() {
 		if p.filterQuery != "" || p.statusFilter != "" {
-			p.statusLabel.SetText(fmt.Sprintf("History (%d/%d)", len(filtered), len(p.allEntries)))
+			p.statusLabel.SetText(fmt.Sprintf("History (%d of %d)", len(filtered), len(p.allEntries)))
 		} else {
 			p.statusLabel.SetText(fmt.Sprintf("History (%d)", len(p.allEntries)))
 		}

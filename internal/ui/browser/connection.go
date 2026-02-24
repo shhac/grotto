@@ -111,7 +111,7 @@ func (c *ConnectionBar) handleButtonClick() {
 	switch state {
 	case "disconnected", "error":
 		// Connect
-		address := c.addressEntry.Text
+		address := c.resolveAddress()
 		if address == "" {
 			address = "localhost:50051" // Default
 		}
@@ -230,19 +230,41 @@ func (c *ConnectionBar) loadRecentOptions() {
 	c.recentConns = conns
 	options := make([]string, len(conns))
 	for i, conn := range conns {
-		options[i] = conn.Address
+		options[i] = formatConnectionDisplay(conn)
 	}
 	c.addressEntry.SetOptions(options)
+}
+
+// formatConnectionDisplay returns a display string for a connection.
+// If the connection has a name, formats as "Name (address)", otherwise just the address.
+func formatConnectionDisplay(conn domain.Connection) string {
+	if conn.Name != "" {
+		return conn.Name + " (" + conn.Address + ")"
+	}
+	return conn.Address
 }
 
 // restoreTLSFromHistory restores TLS settings when an address matches a recent connection.
 func (c *ConnectionBar) restoreTLSFromHistory(addr string) {
 	for _, conn := range c.recentConns {
-		if conn.Address == addr {
+		if conn.Address == addr || formatConnectionDisplay(conn) == addr {
 			c.tlsSettings = conn.TLS
 			c.tlsSettings.Enabled = conn.UseTLS
 			c.updateTLSIcon()
 			return
 		}
 	}
+}
+
+// resolveAddress extracts the raw address from the entry text.
+// Handles both plain addresses and "Name (address)" format from named profiles.
+func (c *ConnectionBar) resolveAddress() string {
+	text := c.addressEntry.Text
+	// Check if it matches a named profile display format
+	for _, conn := range c.recentConns {
+		if formatConnectionDisplay(conn) == text {
+			return conn.Address
+		}
+	}
+	return text
 }
