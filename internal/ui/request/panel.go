@@ -292,6 +292,21 @@ func (p *RequestPanel) SetSendEnabled(enabled bool) {
 	}
 }
 
+// SetEnabled enables or disables all interactive elements in the request panel.
+func (p *RequestPanel) SetEnabled(enabled bool) {
+	if enabled {
+		p.textEditor.Enable()
+		p.keyEntry.Enable()
+		p.valEntry.Enable()
+		p.sendBtn.Enable()
+	} else {
+		p.textEditor.Disable()
+		p.keyEntry.Disable()
+		p.valEntry.Disable()
+		p.sendBtn.Disable()
+	}
+}
+
 // SetOnSend sets the callback for when Send is clicked (unary/server streaming)
 func (p *RequestPanel) SetOnSend(fn func(json string, metadata map[string]string)) {
 	p.onSend = fn

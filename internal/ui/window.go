@@ -296,7 +296,7 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 	prevMetadata := w.requestPanel.GetMetadata()
 
 	// Disable request panel during connection
-	w.requestPanel.SetSendEnabled(false)
+	w.requestPanel.SetEnabled(false)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), w.getRequestTimeout())
@@ -370,6 +370,7 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 		// Refresh the service browser and reconcile request panel (must be on main thread)
 		fyne.Do(func() {
 			w.serviceBrowser.Refresh()
+			w.requestPanel.SetEnabled(true)
 
 			// Check if the previously selected method exists on the new server
 			if prevService != "" && prevMethod != "" && w.hasMethod(services, prevService, prevMethod) {
@@ -387,6 +388,7 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 				// No match — clear the stale request panel
 				w.requestPanel.SetMethod("", nil)
 				w.requestPanel.SetMetadata(nil)
+				w.requestPanel.SetSendEnabled(false)
 				_ = w.state.SelectedService.Set("")
 				_ = w.state.SelectedMethod.Set("")
 				_ = w.state.Response.TextData.Set("")
@@ -408,6 +410,7 @@ func (w *MainWindow) failConnect(address string, tls domain.TLSSettings, msg str
 	_ = w.connState.State.Set("error")
 	_ = w.connState.Message.Set(msg + ": " + err.Error())
 	fyne.Do(func() {
+		w.requestPanel.SetEnabled(true)
 		uierrors.ShowGRPCError(err, w.window, func() {
 			w.handleConnect(address, tls)
 		})
