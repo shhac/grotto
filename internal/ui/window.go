@@ -288,6 +288,16 @@ func convertMetadataToMap(md metadata.MD) map[string]string {
 
 // handleConnect establishes a connection and lists services
 func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSettings) {
+	// Capture currently selected method before connecting — used to restore
+	// the request panel if the new server has a matching service/method.
+	prevService, _ := w.state.SelectedService.Get()
+	prevMethod, _ := w.state.SelectedMethod.Get()
+	prevRequestJSON, _ := w.state.Request.TextData.Get()
+	prevMetadata := w.requestPanel.GetMetadata()
+
+	// Disable request panel during connection
+	w.requestPanel.SetSendEnabled(false)
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), w.getRequestTimeout())
 		defer cancel()
@@ -357,9 +367,35 @@ func (w *MainWindow) handleConnect(address string, tlsSettings domain.TLSSetting
 		// Save to recent connections
 		w.connectionBar.SaveConnection(cfg)
 
-		// Refresh the service browser and focus it (must be on main thread in Fyne 2.6+)
+		// Refresh the service browser and reconcile request panel (must be on main thread)
 		fyne.Do(func() {
 			w.serviceBrowser.Refresh()
+
+			// Check if the previously selected method exists on the new server
+			if prevService != "" && prevMethod != "" && w.hasMethod(services, prevService, prevMethod) {
+				// Re-select to regenerate form from the new server's descriptor
+				w.serviceBrowser.SelectMethod(prevService, prevMethod)
+				// Restore request data (SelectMethod clears TextData via SetMethod)
+				if prevRequestJSON != "" {
+					_ = w.state.Request.TextData.Set(prevRequestJSON)
+					w.requestPanel.SyncTextToForm()
+				}
+				if len(prevMetadata) > 0 {
+					w.requestPanel.SetMetadata(prevMetadata)
+				}
+			} else if prevService != "" || prevMethod != "" {
+				// No match — clear the stale request panel
+				w.requestPanel.SetMethod("", nil)
+				w.requestPanel.SetMetadata(nil)
+				_ = w.state.SelectedService.Set("")
+				_ = w.state.SelectedMethod.Set("")
+				_ = w.state.Response.TextData.Set("")
+				_ = w.state.Response.Error.Set("")
+				_ = w.state.Response.Duration.Set("")
+				_ = w.state.Response.Size.Set("")
+				w.responsePanel.ClearResponseMetadata()
+			}
+
 			w.serviceBrowser.FocusTree()
 		})
 	}()
@@ -376,6 +412,21 @@ func (w *MainWindow) failConnect(address string, tls domain.TLSSettings, msg str
 			w.handleConnect(address, tls)
 		})
 	})
+}
+
+// hasMethod returns true if the given service/method pair exists in the services list.
+func (w *MainWindow) hasMethod(services []domain.Service, serviceName, methodName string) bool {
+	for _, svc := range services {
+		if svc.FullName == serviceName {
+			for _, m := range svc.Methods {
+				if m.Name == methodName {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return false
 }
 
 // cancelAllStreams cancels all active stream operations and clears their handles.
