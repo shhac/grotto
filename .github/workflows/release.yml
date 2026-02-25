@@ -55,15 +55,16 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd dist
-          shasum -a 256 Grotto_${VERSION}_darwin_arm64.zip Grotto_${VERSION}_darwin_amd64.zip > Grotto_${VERSION}_checksums.txt
+          shasum -a 256 Grotto_${VERSION}_darwin_arm64.zip Grotto_${VERSION}_darwin_amd64.zip > Grotto_app_checksums.txt
 
       - name: Upload .app bundles to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          gh release upload "$GITHUB_REF_NAME" \
+          for f in \
             "dist/Grotto_${VERSION}_darwin_arm64.zip" \
             "dist/Grotto_${VERSION}_darwin_amd64.zip" \
-            "dist/Grotto_${VERSION}_checksums.txt" \
-            --clobber
+            "dist/Grotto_app_checksums.txt"; do
+            gh release upload "$GITHUB_REF_NAME" "$f" --clobber
+          done
