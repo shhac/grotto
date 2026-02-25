@@ -216,7 +216,7 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		entry.SetPlaceHolder("key")
 		return entry
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -226,7 +226,7 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -236,7 +236,7 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -246,7 +246,7 @@ func (m *MapFieldWidget) createKeyWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -315,7 +315,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return sel
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -325,7 +325,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -335,7 +335,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -345,7 +345,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -355,7 +355,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.FloatKind:
-		entry := newFormEntry()
+		entry := newFloatEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -365,7 +365,7 @@ func (m *MapFieldWidget) createValueWidget() fyne.CanvasObject {
 		}
 		return entry
 	case protoreflect.DoubleKind:
-		entry := newFormEntry()
+		entry := newFloatEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {

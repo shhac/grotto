@@ -179,7 +179,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -205,7 +205,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-		entry := newFormEntry()
+		entry := newSignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -231,7 +231,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -257,7 +257,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-		entry := newFormEntry()
+		entry := newUnsignedIntEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -283,7 +283,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.FloatKind:
-		entry := newFormEntry()
+		entry := newFloatEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -309,7 +309,7 @@ func MapFieldToWidget(fd protoreflect.FieldDescriptor) *FieldWidget {
 		}
 
 	case protoreflect.DoubleKind:
-		entry := newFormEntry()
+		entry := newFloatEntry()
 		entry.SetPlaceHolder("0.0")
 		entry.Validator = func(s string) error {
 			if s == "" {
@@ -501,6 +501,60 @@ func newFormEntry() *widget.Entry {
 	e := widget.NewEntry()
 	e.Wrapping = fyne.TextWrapOff
 	e.Scroll = container.ScrollNone
+	return e
+}
+
+// newSignedIntEntry creates an Entry that filters keystrokes to signed integer
+// characters (0-9, -, +). Existing validators still handle range checking.
+func newSignedIntEntry() *widget.Entry {
+	e := newFormEntry()
+	e.OnChanged = func(s string) {
+		filtered := strings.Map(func(r rune) rune {
+			if (r >= '0' && r <= '9') || r == '-' || r == '+' {
+				return r
+			}
+			return -1
+		}, s)
+		if filtered != s {
+			e.SetText(filtered)
+		}
+	}
+	return e
+}
+
+// newUnsignedIntEntry creates an Entry that filters keystrokes to unsigned
+// integer characters (0-9 only).
+func newUnsignedIntEntry() *widget.Entry {
+	e := newFormEntry()
+	e.OnChanged = func(s string) {
+		filtered := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, s)
+		if filtered != s {
+			e.SetText(filtered)
+		}
+	}
+	return e
+}
+
+// newFloatEntry creates an Entry that filters keystrokes to floating-point
+// characters (0-9, -, +, ., e, E) for scientific notation support.
+func newFloatEntry() *widget.Entry {
+	e := newFormEntry()
+	e.OnChanged = func(s string) {
+		filtered := strings.Map(func(r rune) rune {
+			if (r >= '0' && r <= '9') || r == '-' || r == '+' || r == '.' || r == 'e' || r == 'E' {
+				return r
+			}
+			return -1
+		}, s)
+		if filtered != s {
+			e.SetText(filtered)
+		}
+	}
 	return e
 }
 
