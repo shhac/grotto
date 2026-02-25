@@ -50,7 +50,7 @@ func NewRepeatedFieldWidget(name string, fd protoreflect.FieldDescriptor) *Repea
 	// Main container with label, list, and add button.
 	// Items grow naturally inside the VBox; the outer form VScroll handles scrolling.
 	r.container = container.NewBorder(
-		widget.NewLabel(name+":"),
+		fieldLabel(formatFieldLabel(name), repeatedTypeHint(fd)),
 		r.addButton,
 		nil,
 		nil,

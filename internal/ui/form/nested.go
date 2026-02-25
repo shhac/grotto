@@ -39,8 +39,10 @@ func NewNestedMessageWidget(name string, md protoreflect.MessageDescriptor) *Nes
 	leftPad.SetMinSize(fyne.NewSize(12, 0))
 	indentedContent := container.NewBorder(nil, nil, leftPad, nil, n.builder.BuildContent())
 
-	// Create tree-style collapsible section with ▶/▼ disclosure icons
-	n.section = components.NewCollapsibleSection(name, indentedContent)
+	// Create tree-style collapsible section with ▶/▼ disclosure icons and type hint
+	n.section = components.NewCollapsibleSectionWithHint(
+		formatFieldLabel(name), string(md.Name()), indentedContent,
+	)
 
 	n.container = n.section
 	n.ExtendBaseWidget(n)

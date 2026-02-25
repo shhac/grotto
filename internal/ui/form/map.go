@@ -69,7 +69,7 @@ func NewMapFieldWidget(name string, fd protoreflect.FieldDescriptor) *MapFieldWi
 	// Main container with label, list, and add button.
 	// Items grow naturally inside the VBox; the outer form VScroll handles scrolling.
 	m.container = container.NewBorder(
-		widget.NewLabel(name+":"),
+		fieldLabel(formatFieldLabel(name), mapTypeHint(fd)),
 		m.addButton,
 		nil,
 		nil,

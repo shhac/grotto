@@ -153,7 +153,7 @@ func (o *OneofWidget) SetValue(fieldName string, value interface{}) {
 
 // CreateRenderer implements fyne.Widget
 func (o *OneofWidget) CreateRenderer() fyne.WidgetRenderer {
-	label := widget.NewLabel(o.name + ":")
+	label := fieldLabel(formatFieldLabel(o.name), "oneof")
 
 	content := container.NewVBox(
 		container.NewBorder(nil, nil, label, nil, o.selector),

@@ -105,7 +105,7 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 					b.fields[fieldName] = fw
 					formItem := container.NewBorder(
 						nil, nil,
-						fieldLabelWithType(fw.Label, fd), nil,
+						fieldLabel(fw.Label, scalarTypeHint(fd)), nil,
 						fw.Widget,
 					)
 					items = append(items, formItem)
@@ -123,18 +123,17 @@ func (b *FormBuilder) Build() fyne.CanvasObject {
 			if fw != nil {
 				b.fields[fieldName] = fw
 
-				// Create form row with label and widget
-				var formItem fyne.CanvasObject
-				if fd.Kind() == protoreflect.BoolKind {
-					// Checkbox already has label
-					formItem = fw.Widget
-				} else {
-					formItem = container.NewBorder(
-						nil, nil,
-						fieldLabelWithType(fw.Label, fd), nil,
-						fw.Widget,
-					)
+				// Strip checkbox text — label is provided by fieldLabel for consistency
+				if check, ok := fw.Widget.(*widget.Check); ok {
+					check.Text = ""
+					check.Refresh()
 				}
+
+				formItem := container.NewBorder(
+					nil, nil,
+					fieldLabel(fw.Label, scalarTypeHint(fd)), nil,
+					fw.Widget,
+				)
 				items = append(items, formItem)
 			}
 		}
@@ -742,16 +741,17 @@ func (b *FormBuilder) BuildForm(md protoreflect.MessageDescriptor) fyne.CanvasOb
 	return b.Build()
 }
 
-// fieldLabelWithType creates a label row with the field name and a subdued type hint.
-func fieldLabelWithType(label string, fd protoreflect.FieldDescriptor) fyne.CanvasObject {
-	nameLabel := widget.NewLabel(label + ":")
-	typeHint := widget.NewLabel(protoTypeName(fd))
-	typeHint.Importance = widget.LowImportance
-	return container.NewHBox(nameLabel, typeHint)
+// fieldLabel creates a consistent label row with the field name and a subdued type hint.
+// All form fields should use this for consistent labeling.
+func fieldLabel(name, typeHint string) fyne.CanvasObject {
+	nameLabel := widget.NewLabel(name + ":")
+	hint := widget.NewLabel(typeHint)
+	hint.Importance = widget.LowImportance
+	return container.NewHBox(nameLabel, hint)
 }
 
-// protoTypeName returns a human-readable type name for a field descriptor.
-func protoTypeName(fd protoreflect.FieldDescriptor) string {
+// scalarTypeHint returns a human-readable type name for a scalar/message field.
+func scalarTypeHint(fd protoreflect.FieldDescriptor) string {
 	if fd.Kind() == protoreflect.MessageKind {
 		return string(fd.Message().Name())
 	}
@@ -759,6 +759,23 @@ func protoTypeName(fd protoreflect.FieldDescriptor) string {
 		return string(fd.Enum().Name())
 	}
 	return fd.Kind().String()
+}
+
+// repeatedTypeHint returns a type hint for a repeated field, e.g. "repeated string".
+func repeatedTypeHint(fd protoreflect.FieldDescriptor) string {
+	return "repeated " + scalarTypeHint(fd)
+}
+
+// mapTypeHint returns a type hint for a map field, e.g. "map<string, int32>".
+func mapTypeHint(fd protoreflect.FieldDescriptor) string {
+	keyHint := fd.MapKey().Kind().String()
+	var valHint string
+	if fd.MapValue().Kind() == protoreflect.MessageKind {
+		valHint = string(fd.MapValue().Message().Name())
+	} else {
+		valHint = fd.MapValue().Kind().String()
+	}
+	return "map<" + keyHint + ", " + valHint + ">"
 }
 
 // stringToMapKey converts a string key to a protoreflect.Value for map keys

@@ -20,15 +20,26 @@ type TreeSection struct {
 
 // NewCollapsibleSection creates a tree-style collapsible section, initially collapsed.
 func NewCollapsibleSection(title string, content fyne.CanvasObject) *TreeSection {
-	return newTreeSection(title, content, false)
+	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	return newTreeSection(titleLabel, content, false)
+}
+
+// NewCollapsibleSectionWithHint creates a collapsible section with a subdued type hint.
+func NewCollapsibleSectionWithHint(title, hint string, content fyne.CanvasObject) *TreeSection {
+	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	hintLabel := widget.NewLabel(hint)
+	hintLabel.Importance = widget.LowImportance
+	titleRow := container.NewHBox(titleLabel, hintLabel)
+	return newTreeSection(titleRow, content, false)
 }
 
 // NewExpandedCollapsibleSection creates a tree-style collapsible section, initially expanded.
 func NewExpandedCollapsibleSection(title string, content fyne.CanvasObject) *TreeSection {
-	return newTreeSection(title, content, true)
+	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	return newTreeSection(titleLabel, content, true)
 }
 
-func newTreeSection(title string, content fyne.CanvasObject, expanded bool) *TreeSection {
+func newTreeSection(titleContent fyne.CanvasObject, content fyne.CanvasObject, expanded bool) *TreeSection {
 	ts := &TreeSection{
 		expanded: expanded,
 		content:  content,
@@ -40,9 +51,8 @@ func newTreeSection(title string, content fyne.CanvasObject, expanded bool) *Tre
 		ts.icon = widget.NewIcon(theme.MenuExpandIcon())
 	}
 
-	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	header := newTappableRow(
-		container.NewHBox(ts.icon, titleLabel),
+		container.NewHBox(ts.icon, titleContent),
 		func() { ts.Toggle() },
 	)
 

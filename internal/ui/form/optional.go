@@ -39,11 +39,14 @@ func NewOptionalScalarWidget(fw *FieldWidget) *OptionalFieldWidget {
 	}
 
 	o.toggle = widget.NewCheck(fw.Label+":", nil)
+	typeHint := widget.NewLabel(scalarTypeHint(fw.Descriptor))
+	typeHint.Importance = widget.LowImportance
+	toggleRow := container.NewHBox(o.toggle, typeHint)
 
 	o.content = container.NewStack(fw.Widget)
 	o.content.Hide()
 
-	o.outer = container.NewBorder(nil, nil, o.toggle, nil, o.content)
+	o.outer = container.NewBorder(nil, nil, toggleRow, nil, o.content)
 
 	// Set callback after outer is created so refresh works
 	o.toggle.OnChanged = func(checked bool) {
@@ -71,6 +74,8 @@ func NewOptionalNestedWidget(name string, md protoreflect.MessageDescriptor) *Op
 	builder := NewFormBuilder(md)
 
 	o.toggle = widget.NewCheck(formatFieldLabel(name), nil)
+	typeHint := widget.NewLabel(string(md.Name()))
+	typeHint.Importance = widget.LowImportance
 
 	// Indent nested content for visual depth cue
 	leftPad := canvas.NewRectangle(color.Transparent)
@@ -80,7 +85,7 @@ func NewOptionalNestedWidget(name string, md protoreflect.MessageDescriptor) *Op
 	o.content = container.NewVBox(indented)
 	o.content.Hide()
 
-	o.outer = container.NewVBox(o.toggle, o.content)
+	o.outer = container.NewVBox(container.NewHBox(o.toggle, typeHint), o.content)
 
 	o.toggle.OnChanged = func(checked bool) {
 		if checked {
