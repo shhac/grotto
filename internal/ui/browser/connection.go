@@ -52,6 +52,7 @@ func NewConnectionBar(state *model.ConnectionUIState, window fyne.Window, repo s
 	c.connectBtn = widget.NewButton("Connect", func() {
 		c.handleButtonClick()
 	})
+	c.connectBtn.Importance = widget.HighImportance
 
 	// TLS toggle button with padlock icon (left of address)
 	c.tlsToggleBtn = widget.NewButtonWithIcon("", lockUnlockedIcon, func() {

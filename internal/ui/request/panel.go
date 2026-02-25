@@ -218,6 +218,7 @@ func NewRequestPanel(state *model.RequestState, logger *slog.Logger) *RequestPan
 	p.sendBtn = widget.NewButton("Send", func() {
 		p.handleSend()
 	})
+	p.sendBtn.Importance = widget.HighImportance
 	p.sendBtn.Disable()
 
 	// Streaming input widget
