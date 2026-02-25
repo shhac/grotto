@@ -208,9 +208,6 @@ func (p *WorkspacePanel) handleSave() {
 		}
 
 		p.logger.Info("workspace saved", slog.String("name", name))
-		ShowInfoDialog(p.window, "Workspace Saved", "Workspace '"+name+"' saved successfully")
-
-		// Refresh list
 		p.RefreshList()
 	}
 

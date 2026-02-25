@@ -21,7 +21,9 @@ type ServiceBrowser struct {
 
 	tree        *widget.Tree
 	services    binding.UntypedList // []domain.Service
+	connState   binding.String      // connection state for loading indicator
 	placeholder *widget.Label       // shown when no services loaded
+	activity    *widget.Activity    // loading spinner during connection
 	content     *fyne.Container     // stack switching between placeholder and tree
 
 	// O(1) service lookup index, rebuilt when services binding changes
@@ -39,9 +41,10 @@ type ServiceBrowser struct {
 }
 
 // NewServiceBrowser creates a new service browser widget
-func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
+func NewServiceBrowser(services binding.UntypedList, connState binding.String) *ServiceBrowser {
 	b := &ServiceBrowser{
 		services:     services,
+		connState:    connState,
 		serviceIndex: make(map[string]domain.Service),
 	}
 
@@ -65,6 +68,9 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 	b.placeholder.Wrapping = fyne.TextWrapWord
 	b.placeholder.TextStyle = fyne.TextStyle{Italic: true}
 
+	// Activity indicator for connecting state
+	b.activity = widget.NewActivity()
+
 	// Filter entry for searching services and methods
 	b.filterEntry = widget.NewEntry()
 	b.filterEntry.SetPlaceHolder("Filter services...")
@@ -80,6 +86,11 @@ func NewServiceBrowser(services binding.UntypedList) *ServiceBrowser {
 		container.NewVBox(layout.NewSpacer(), b.placeholder, layout.NewSpacer()),
 	)
 	b.content = container.NewStack(placeholderCentered)
+
+	// Listen to connection state changes for loading indicator
+	connState.AddListener(binding.NewDataListener(func() {
+		b.updateConnState()
+	}))
 
 	b.ExtendBaseWidget(b)
 	return b
@@ -348,6 +359,35 @@ func (b *ServiceBrowser) rebuildIndex() {
 			}
 		}
 		b.content.Refresh()
+	}
+}
+
+// updateConnState updates the browser display based on connection state.
+// Shows a loading indicator during "connecting", defers to rebuildIndex otherwise.
+func (b *ServiceBrowser) updateConnState() {
+	if b.content == nil {
+		return
+	}
+
+	state, err := b.connState.Get()
+	if err != nil {
+		return
+	}
+
+	if state == "connecting" {
+		b.activity.Start()
+		connectingLabel := widget.NewLabel("Connecting...")
+		connectingLabel.Alignment = fyne.TextAlignCenter
+		connectingLabel.TextStyle = fyne.TextStyle{Italic: true}
+		b.content.Objects = []fyne.CanvasObject{
+			container.NewBorder(nil, nil, nil, nil,
+				container.NewVBox(layout.NewSpacer(), b.activity, connectingLabel, layout.NewSpacer()),
+			),
+		}
+		b.content.Refresh()
+	} else {
+		b.activity.Stop()
+		// Let rebuildIndex handle the display for other states
 	}
 }
 

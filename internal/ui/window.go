@@ -119,7 +119,7 @@ func NewMainWindow(fyneApp fyne.App, app AppController) *MainWindow {
 
 	// Create real UI components
 	mw.connectionBar = browser.NewConnectionBar(connState, window, app.Storage())
-	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services)
+	mw.serviceBrowser = browser.NewServiceBrowser(mw.state.Services, connState.State)
 	mw.requestPanel = request.NewRequestPanel(mw.state.Request, mw.logger)
 	mw.responsePanel = response.NewResponsePanel(mw.state.Response, window)
 	mw.bidiPanel = bidi.NewBidiStreamPanel(window)

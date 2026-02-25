@@ -14,7 +14,8 @@ func TestNewServiceBrowser(t *testing.T) {
 	defer app.Quit()
 
 	services := binding.NewUntypedList()
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	assert.NotNil(t, browser, "ServiceBrowser should not be nil")
 	assert.NotNil(t, browser.tree, "tree should be initialized")
@@ -69,7 +70,8 @@ func TestServiceBrowser_DisplaysServices(t *testing.T) {
 		services.Append(s)
 	}
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Test that services are available as root UIDs
 	serviceUIDs := browser.getServiceUIDs()
@@ -107,7 +109,8 @@ func TestServiceBrowser_GetMethodUIDs(t *testing.T) {
 	}
 	services.Append(mockService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Test that methods are returned for a service
 	methodUIDs := browser.getMethodUIDs("example.UserService")
@@ -121,7 +124,8 @@ func TestServiceBrowser_IsBranch(t *testing.T) {
 	defer app.Quit()
 
 	services := binding.NewUntypedList()
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	tests := []struct {
 		name     string
@@ -171,7 +175,8 @@ func TestServiceBrowser_FindService(t *testing.T) {
 	}
 	services.Append(mockService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Test finding existing service
 	found := browser.findService("example.UserService")
@@ -213,7 +218,8 @@ func TestServiceBrowser_FindMethod(t *testing.T) {
 	}
 	services.Append(mockService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Test finding existing method
 	found := browser.findMethod(mockService, "GetUser")
@@ -247,7 +253,8 @@ func TestServiceBrowser_OnMethodSelect(t *testing.T) {
 	}
 	services.Append(mockService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Set up callback to capture selected method
 	var selectedService domain.Service
@@ -273,7 +280,8 @@ func TestServiceBrowser_GetMethodIcon(t *testing.T) {
 	defer app.Quit()
 
 	services := binding.NewUntypedList()
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	tests := []struct {
 		name         string
@@ -332,7 +340,8 @@ func TestServiceBrowser_GetMethodTypeBadge(t *testing.T) {
 	defer app.Quit()
 
 	services := binding.NewUntypedList()
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	tests := []struct {
 		name     string
@@ -402,7 +411,8 @@ func TestServiceBrowser_ChildUIDs(t *testing.T) {
 	}
 	services.Append(mockService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Test root level (empty UID)
 	rootChildren := browser.childUIDs("")
@@ -424,7 +434,8 @@ func TestServiceBrowser_Refresh(t *testing.T) {
 	defer app.Quit()
 
 	services := binding.NewUntypedList()
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Add a service after creating the browser
 	mockService := domain.Service{
@@ -461,7 +472,8 @@ func TestServiceBrowser_ErrorService(t *testing.T) {
 	services.Append(normalService)
 	services.Append(errorService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Both services should appear in the tree
 	serviceUIDs := browser.getServiceUIDs()
@@ -509,7 +521,8 @@ func TestServiceBrowser_SortedAlphabetically(t *testing.T) {
 		},
 	})
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// Services should be sorted alphabetically by full name
 	serviceUIDs := browser.getServiceUIDs()
@@ -547,7 +560,8 @@ func TestServiceBrowser_FilterServices(t *testing.T) {
 		},
 	})
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	// No filter — all services shown
 	assert.Len(t, browser.getServiceUIDs(), 2)
@@ -620,7 +634,8 @@ func TestServiceBrowser_OnServiceError(t *testing.T) {
 	}
 	services.Append(errorService)
 
-	browser := NewServiceBrowser(services)
+	connState := binding.NewString()
+	browser := NewServiceBrowser(services, connState)
 
 	var capturedService domain.Service
 	callbackCalled := false
