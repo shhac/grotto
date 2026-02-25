@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="archGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="45%" stop-color="#6c7cf6"/>
+      <stop offset="100%" stop-color="#9b5cf6"/>
+    </linearGradient>
+    <linearGradient id="groundGrad" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#9b5cf6"/>
+    </linearGradient>
+    <linearGradient id="hexGrad" x1="0.5" y1="1" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#9b5cf6"/>
+      <stop offset="100%" stop-color="#40c0f0"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="faintGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <radialGradient id="bgGlow" cx="0.42" cy="0.38" r="0.55">
+      <stop offset="0%" stop-color="#181838"/>
+      <stop offset="100%" stop-color="#08080f"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="90" fill="url(#bgGlow)"/>
+
+  <!-- === MAIN "G" ARCH === -->
+  <g filter="url(#glow)">
+    <!-- Left pillar (full height) + arch + right side descending to crossbar -->
+    <path d="
+      M 115 440
+      L 115 175
+      C 115 75, 215 42, 285 42
+      C 360 42, 405 90, 405 175
+      L 405 290
+    " fill="none" stroke="url(#archGrad)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Right stump rising from ground to crossbar -->
+    <line x1="405" y1="440" x2="405" y2="330" stroke="#9b5cf6" stroke-width="11" stroke-linecap="round"/>
+
+    <!-- G crossbar bridging descending arch to stump -->
+    <line x1="405" y1="310" x2="280" y2="310" stroke="#8b6cf6" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- Inner arch (parallel, thinner) -->
+    <path d="
+      M 165 440
+      L 165 190
+      C 165 115, 238 88, 285 88
+      C 338 88, 360 118, 360 190
+      L 360 275
+    " fill="none" stroke="url(#archGrad)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+  </g>
+
+  <!-- === CIRCUIT TRACES === -->
+  <g filter="url(#softGlow)">
+    <!-- Left pillar external traces -->
+    <line x1="115" y1="300" x2="72" y2="300" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/>
+    <line x1="72" y1="300" x2="72" y2="350" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"/>
+    <line x1="115" y1="380" x2="85" y2="380" stroke="#9b6cf6" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- Top of arch traces -->
+    <line x1="285" y1="42" x2="285" y2="22" stroke="#00d4ff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="285" y1="22" x2="318" y2="22" stroke="#00d4ff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="195" y1="58" x2="172" y2="35" stroke="#20d0f0" stroke-width="3" stroke-linecap="round"/>
+    <line x1="365" y1="65" x2="385" y2="45" stroke="#20d0f0" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Right side external traces -->
+    <line x1="405" y1="200" x2="442" y2="200" stroke="#7c6cf6" stroke-width="4" stroke-linecap="round"/>
+    <line x1="442" y1="200" x2="442" y2="245" stroke="#7c6cf6" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- Below crossbar: trace from stump -->
+    <line x1="405" y1="370" x2="440" y2="370" stroke="#9b5cf6" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="440" y1="370" x2="440" y2="410" stroke="#9b5cf6" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Crossbar end detail -->
+    <line x1="280" y1="310" x2="280" y2="340" stroke="#7c6cf6" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- === CIRCUIT NODES === -->
+  <g filter="url(#softGlow)">
+    <!-- Left pillar -->
+    <circle cx="115" cy="300" r="6" fill="#a78bfa"/>
+    <circle cx="72" cy="300" r="4.5" fill="#8b5cf6"/>
+    <circle cx="72" cy="350" r="4.5" fill="#8b5cf6"/>
+    <circle cx="85" cy="380" r="4" fill="#9b6cf6"/>
+
+    <!-- Top -->
+    <circle cx="285" cy="22" r="5" fill="#00d4ff"/>
+    <circle cx="318" cy="22" r="3.5" fill="#00d4ff"/>
+    <circle cx="172" cy="35" r="4" fill="#20d0f0"/>
+    <circle cx="385" cy="45" r="4" fill="#20d0f0"/>
+
+    <!-- Right side -->
+    <circle cx="405" cy="200" r="6" fill="#a78bfa"/>
+    <circle cx="442" cy="200" r="4.5" fill="#7c6cf6"/>
+    <circle cx="442" cy="245" r="4" fill="#7c6cf6"/>
+
+    <!-- Crossbar -->
+    <circle cx="280" cy="310" r="6.5" fill="#8b6cf6"/>
+    <circle cx="280" cy="340" r="4" fill="#7c6cf6"/>
+
+    <!-- Below crossbar / stump -->
+    <circle cx="440" cy="370" r="4.5" fill="#9b5cf6"/>
+    <circle cx="440" cy="410" r="4" fill="#9b5cf6"/>
+  </g>
+
+  <!-- === HEXAGONAL "GRASS" along the ground === -->
+  <!-- Growing up from the base between the two pillars like crystalline stalagmites -->
+  <g filter="url(#faintGlow)" fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Tallest center hex cluster -->
+    <polygon points="255,400 268,393 268,377 255,370 242,377 242,393" stroke="#40c0f0" stroke-width="2.5" opacity="0.75"/>
+    <polygon points="255,370 264,365 264,355 255,350 246,355 246,365" stroke="#30b8e8" stroke-width="2" opacity="0.55"/>
+
+    <!-- Left-center cluster -->
+    <polygon points="200,415 212,408 212,394 200,387 188,394 188,408" stroke="#6c8cf6" stroke-width="2.5" opacity="0.65"/>
+    <polygon points="200,387 208,382 208,373 200,368 192,373 192,382" stroke="#5090f0" stroke-width="2" opacity="0.45"/>
+
+    <!-- Right-center cluster -->
+    <polygon points="320,410 332,403 332,389 320,382 308,389 308,403" stroke="#7c6cf6" stroke-width="2.5" opacity="0.65"/>
+    <polygon points="320,382 327,377 327,369 320,364 313,369 313,377" stroke="#6080f0" stroke-width="2" opacity="0.45"/>
+
+    <!-- Small accent hexes -->
+    <polygon points="165,425 174,420 174,412 165,407 156,412 156,420" stroke="#8b5cf6" stroke-width="2" opacity="0.5"/>
+    <polygon points="360,425 369,420 369,412 360,407 351,412 351,420" stroke="#9b5cf6" stroke-width="2" opacity="0.5"/>
+
+    <!-- Tiny ground-level hexes -->
+    <polygon points="225,435 232,431 232,425 225,421 218,425 218,431" stroke="#7c6cf6" stroke-width="1.5" opacity="0.4"/>
+    <polygon points="290,432 297,428 297,422 290,418 283,422 283,428" stroke="#8b6cf6" stroke-width="1.5" opacity="0.4"/>
+    <polygon points="345,438 351,435 351,430 345,427 339,430 339,435" stroke="#9b5cf6" stroke-width="1.5" opacity="0.35"/>
+  </g>
+
+  <!-- Vertical wisps connecting hex-grass to ground -->
+  <g stroke-linecap="round" opacity="0.3" filter="url(#faintGlow)">
+    <line x1="200" y1="415" x2="200" y2="440" stroke="#6c8cf6" stroke-width="1.5"/>
+    <line x1="255" y1="400" x2="255" y2="440" stroke="#40c0f0" stroke-width="1.5"/>
+    <line x1="320" y1="410" x2="320" y2="440" stroke="#7c6cf6" stroke-width="1.5"/>
+  </g>
+
+  <!-- === GROUND LINES (G base) === -->
+  <!-- Horizontal lines near the bottom tying the base together -->
+  <g filter="url(#softGlow)" stroke-linecap="round">
+    <line x1="135" y1="455" x2="240" y2="455" stroke="#8b5cf6" stroke-width="4" opacity="0.6"/>
+    <line x1="270" y1="455" x2="385" y2="455" stroke="#8b5cf6" stroke-width="4" opacity="0.6"/>
+    <line x1="155" y1="468" x2="215" y2="468" stroke="#7c6cf6" stroke-width="3" opacity="0.4"/>
+    <line x1="300" y1="468" x2="370" y2="468" stroke="#7c6cf6" stroke-width="3" opacity="0.4"/>
+  </g>
+
+  <!-- Ground line nodes -->
+  <g filter="url(#faintGlow)">
+    <circle cx="135" cy="455" r="4" fill="#8b5cf6" opacity="0.6"/>
+    <circle cx="240" cy="455" r="3.5" fill="#8b5cf6" opacity="0.6"/>
+    <circle cx="270" cy="455" r="3.5" fill="#8b5cf6" opacity="0.6"/>
+    <circle cx="385" cy="455" r="4" fill="#8b5cf6" opacity="0.6"/>
+  </g>
+
+  <!-- === FLOATING HEXAGONS (inside arch, higher up) === -->
+  <g filter="url(#softGlow)" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="260,170 275,179 275,197 260,205 245,197 245,179" stroke="#00d4ff" opacity="0.8"/>
+    <polygon points="220,218 233,225 233,241 220,248 207,241 207,225" stroke="#40c0f0" opacity="0.6"/>
+    <polygon points="300,215 313,222 313,238 300,245 287,238 287,222" stroke="#40c0f0" opacity="0.6"/>
+  </g>
+
+  <!-- Lines connecting floating hexagons -->
+  <g stroke="#30b0e0" stroke-width="2" opacity="0.35" filter="url(#softGlow)">
+    <line x1="260" y1="205" x2="220" y2="218"/>
+    <line x1="260" y1="205" x2="300" y2="215"/>
+  </g>
+</svg>
