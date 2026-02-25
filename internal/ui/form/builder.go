@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/shhac/grotto/internal/ui/components"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -744,9 +745,8 @@ func (b *FormBuilder) BuildForm(md protoreflect.MessageDescriptor) fyne.CanvasOb
 // fieldLabel creates a consistent label row with the field name and a subdued type hint.
 // All form fields should use this for consistent labeling.
 func fieldLabel(name, typeHint string) fyne.CanvasObject {
-	nameLabel := widget.NewLabel(name + ":")
-	hint := widget.NewLabel(typeHint)
-	hint.Importance = widget.LowImportance
+	nameLabel := widget.NewLabel(name)
+	hint := components.NewHintLabel(typeHint)
 	return container.NewHBox(nameLabel, hint)
 }
 
@@ -761,9 +761,9 @@ func scalarTypeHint(fd protoreflect.FieldDescriptor) string {
 	return fd.Kind().String()
 }
 
-// repeatedTypeHint returns a type hint for a repeated field, e.g. "repeated string".
+// repeatedTypeHint returns a type hint for a repeated field, e.g. "string[]".
 func repeatedTypeHint(fd protoreflect.FieldDescriptor) string {
-	return "repeated " + scalarTypeHint(fd)
+	return scalarTypeHint(fd) + "[]"
 }
 
 // mapTypeHint returns a type hint for a map field, e.g. "map<string, int32>".

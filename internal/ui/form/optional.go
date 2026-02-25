@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/shhac/grotto/internal/ui/components"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -38,9 +39,8 @@ func NewOptionalScalarWidget(fw *FieldWidget) *OptionalFieldWidget {
 		check.Refresh()
 	}
 
-	o.toggle = widget.NewCheck(fw.Label+":", nil)
-	typeHint := widget.NewLabel(scalarTypeHint(fw.Descriptor))
-	typeHint.Importance = widget.LowImportance
+	o.toggle = widget.NewCheck(fw.Label, nil)
+	typeHint := components.NewHintLabel(scalarTypeHint(fw.Descriptor))
 	toggleRow := container.NewHBox(o.toggle, typeHint)
 
 	o.content = container.NewStack(fw.Widget)
@@ -74,8 +74,7 @@ func NewOptionalNestedWidget(name string, md protoreflect.MessageDescriptor) *Op
 	builder := NewFormBuilder(md)
 
 	o.toggle = widget.NewCheck(formatFieldLabel(name), nil)
-	typeHint := widget.NewLabel(string(md.Name()))
-	typeHint.Importance = widget.LowImportance
+	typeHint := components.NewHintLabel(string(md.Name()))
 
 	// Indent nested content for visual depth cue
 	leftPad := canvas.NewRectangle(color.Transparent)

@@ -27,8 +27,7 @@ func NewCollapsibleSection(title string, content fyne.CanvasObject) *TreeSection
 // NewCollapsibleSectionWithHint creates a collapsible section with a subdued type hint.
 func NewCollapsibleSectionWithHint(title, hint string, content fyne.CanvasObject) *TreeSection {
 	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	hintLabel := widget.NewLabel(hint)
-	hintLabel.Importance = widget.LowImportance
+	hintLabel := NewHintLabel(hint)
 	titleRow := container.NewHBox(titleLabel, hintLabel)
 	return newTreeSection(titleRow, content, false)
 }
