@@ -25,6 +25,7 @@ go.work.sum
 # Grotto binaries
 /grotto
 /grotto_*
+*.app
 
 # Test server binaries
 /testdata/server/server
