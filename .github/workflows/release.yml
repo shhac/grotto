@@ -35,7 +35,6 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
-          # Wrap each goreleaser binary in a .app bundle and zip it
           for arch in arm64 amd64; do
             TARBALL="dist/grotto_${VERSION}_darwin_${arch}.tar.gz"
             WORKDIR=$(mktemp -d)
@@ -43,28 +42,20 @@ jobs:
             tar xzf "$TARBALL" -C "$WORKDIR"
             ./scripts/mkapp.sh "${WORKDIR}/Grotto.app" "${WORKDIR}/grotto" icon.png "$VERSION"
 
-            # Create a zip of the .app bundle
-            OUTPUT="dist/Grotto_${VERSION}_darwin_${arch}.zip"
+            OUTPUT="dist/Grotto_darwin_${arch}.zip"
             (cd "$WORKDIR" && zip -r - Grotto.app) > "$OUTPUT"
             rm -rf "$WORKDIR"
 
             echo "Created $OUTPUT"
           done
 
-      - name: Generate .app checksums
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cd dist
-          shasum -a 256 Grotto_${VERSION}_darwin_arm64.zip Grotto_${VERSION}_darwin_amd64.zip > Grotto_app_checksums.txt
-
       - name: Upload .app bundles to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          for f in \
-            "dist/Grotto_${VERSION}_darwin_arm64.zip" \
-            "dist/Grotto_${VERSION}_darwin_amd64.zip" \
-            "dist/Grotto_app_checksums.txt"; do
+          cd dist
+          shasum -a 256 Grotto_darwin_arm64.zip Grotto_darwin_amd64.zip > Grotto_app_checksums.txt
+
+          for f in Grotto_darwin_arm64.zip Grotto_darwin_amd64.zip Grotto_app_checksums.txt; do
             gh release upload "$GITHUB_REF_NAME" "$f" --clobber
           done
