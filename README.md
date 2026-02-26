@@ -2,6 +2,8 @@
 
 A permissive, user-friendly gRPC client with a native desktop GUI.
 
+![Grotto screenshot](assets/demo.png)
+
 ## Features
 
 - **Reflection-based discovery** — Automatically discovers services and methods via gRPC Server Reflection, with permissive handling of malformed server descriptors
